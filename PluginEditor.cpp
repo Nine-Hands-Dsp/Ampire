@@ -65,7 +65,7 @@ namespace
 
     const float kKnobX[6] = { D (331.5f), D (547.2f), D (760.7f), D (974.5f), D (1187.7f), D (1402.4f) };
     const float kKnobY = D (531.0f);
-    const float kIndR0 = D (29.0f), kIndR1 = D (61.0f), kIndW = D (5.0f);     // repere blanc des potards
+    const float kIndR0 = D (31.6f), kIndR1 = D (71.8f), kIndW = D (4.4f);    // repere blanc arrondi (image du potard fournie)
     const float kValueBase = D (412.2f);                                       // valeur au-dessus du potard
     const juce::Point<float> kJewel (D (1618.4f), D (531.0f));             // voyant et inverseur sur l'axe des potards
     const juce::Rectangle<float> rLedSprite = R (1570, 482.5f, 1667, 579.5f);
@@ -189,12 +189,19 @@ public:
         const float sn = std::sin (ang), cs = std::cos (ang);
         const juce::Point<float> p0 (c.x + sn * kIndR0, c.y - cs * kIndR0), p1 (c.x + sn * kIndR1, c.y - cs * kIndR1);
         const float a = dimmed ? 0.35f : 1.0f;
-        g.setColour (juce::Colours::black.withAlpha (0.45f * a));
-        g.drawLine (p0.x + 0.5f, p0.y + 0.7f, p1.x + 0.5f, p1.y + 0.7f, kIndW + 0.8f);
-        g.setColour (juce::Colours::white.withAlpha (0.18f * a));
-        g.drawLine (p0.x, p0.y, p1.x, p1.y, kIndW + 1.6f);
-        g.setColour (juce::Colour (0xfff6f6f3).withAlpha (a));
-        g.drawLine (p0.x, p0.y, p1.x, p1.y, kIndW);
+        auto bar = [&] (juce::Point<float> q0, juce::Point<float> q1, float w)
+        {
+            juce::Path pth; pth.startNewSubPath (q0); pth.lineTo (q1);
+            juce::Path out; juce::PathStrokeType (w, juce::PathStrokeType::curved, juce::PathStrokeType::rounded).createStrokedPath (out, pth);
+            return out;
+        };
+        const juce::Point<float> sh (0.35f, 0.5f);
+        g.setColour (juce::Colours::black.withAlpha (0.55f * a));
+        g.fillPath (bar (p0 + sh, p1 + sh, kIndW + 0.5f));
+        g.setColour (juce::Colour (0xffe9e9e7).withAlpha (a));
+        g.fillPath (bar (p0, p1, kIndW));
+        g.setColour (juce::Colours::white.withAlpha (0.55f * a));
+        g.fillPath (bar (p0 + juce::Point<float> (-0.15f, -0.15f), p1 + juce::Point<float> (-0.15f, -0.15f), kIndW * 0.45f));
         if (LearnBlink::shown (proc, learnIdx)) LearnBlink::draw (g, getLocalBounds().toFloat().reduced (2.0f), 12.0f);
     }
     void mouseDown (const juce::MouseEvent& e) override

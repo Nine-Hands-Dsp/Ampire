@@ -34,6 +34,7 @@ int main (int argc, char** argv)
             for (int i = 0; i < 256; ++i) { const float v = 0.3f * std::sin ((float) (k * 256 + i) * 0.05f); buf.setSample (0, i, v); buf.setSample (1, i, v); }
             proc.processBlock (buf, mb);
         }
+        if (arg (9) == "0") setP (proc, "active", 0.0f);     // rendu POWER OFF
         std::unique_ptr<juce::AudioProcessorEditor> ed (proc.createEditor());
         if (arg (8) == "1") if (auto* ae = dynamic_cast<AmpireEditor*> (ed.get())) ae->openLibrary (0);
         // signal entretenu pendant l'affichage : vu-metres allumes sur la capture
