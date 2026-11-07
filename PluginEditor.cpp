@@ -65,6 +65,7 @@ namespace
 
     const float kKnobX[6] = { D (331.5f), D (547.2f), D (760.7f), D (974.5f), D (1187.7f), D (1402.4f) };
     const float kKnobY = D (531.0f);
+    constexpr float kSweep = 120.0f;   // course du repere : -120 .. +120 degres, centre de la course en haut
     const float kIndR0 = D (31.6f), kIndR1 = D (71.8f), kIndW = D (4.4f);    // repere blanc arrondi (image du potard fournie)
     const float kValueBase = D (412.2f);                                       // valeur au-dessus du potard
     const juce::Point<float> kJewel (D (1618.4f), D (531.0f));             // voyant et inverseur sur l'axe des potards
@@ -185,7 +186,7 @@ public:
         useAccent();
         // le potard est dans le fond (photo) : seul le repere blanc tourne (300 degres), les reflets restent fixes
         const auto c = getLocalBounds().toFloat().getCentre();
-        const float ang = juce::degreesToRadians (-150.0f + 300.0f * norm());
+        const float ang = juce::degreesToRadians (-kSweep + 2.0f * kSweep * norm());   // course = graduation (9 points)
         const float sn = std::sin (ang), cs = std::cos (ang);
         const juce::Point<float> p0 (c.x + sn * kIndR0, c.y - cs * kIndR0), p1 (c.x + sn * kIndR1, c.y - cs * kIndR1);
         const float a = dimmed ? 0.35f : 1.0f;
@@ -1122,6 +1123,23 @@ public:
 
     // ---------------------------------------------------------------- fond (graphite, plaque anodisee, baie)
     void drawStatic (juce::Graphics& g, bool)
+    {
+        drawStaticBg (g);
+        // graduation : 9 points identiques autour de chaque potard, tous les 30 degres de -120 a +120, centres sur l'axe du
+        // potard (le point du haut est exactement dans l'axe du repere au milieu de la course)
+        for (int i = 0; i < 6; ++i)
+            for (int d = -4; d <= 4; ++d)
+            {
+                const float a = juce::degreesToRadians (30.0f * (float) d);
+                const float x = kKnobX[i] + D (90.5f) * std::sin (a), y = kKnobY - D (90.5f) * std::cos (a);
+                const float r = D (3.7f);
+                g.setColour (juce::Colours::black.withAlpha (0.40f));
+                g.fillEllipse (x - r + 0.3f, y - r + 0.5f, 2 * r, 2 * r);
+                g.setColour (kSilk);
+                g.fillEllipse (x - r, y - r, 2 * r, 2 * r);
+            }
+    }
+    void drawStaticBg (juce::Graphics& g)
     {
         const auto& bg = Art::get().bg;
         g.setImageResamplingQuality (juce::Graphics::highResamplingQuality);

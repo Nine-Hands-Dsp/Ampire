@@ -205,7 +205,7 @@ RR(1546, 340, 1556, 715, 3)
 fgm = np.asarray(fgi) > 0
 panel = inner & ~fgm
 knobz = np.zeros((H, W), bool)
-for cx_, cy_ in KN: knobz |= np.hypot(xx / k - cx_, yy / k - cy_) < 82     # anciens potards + ombres (les points restent hors zone)
+for cx_, cy_ in KN: knobz |= np.hypot(xx / k - cx_, yy / k - cy_) < 101    # anciens potards, ombres et points de graduation (redessines par le plugin, tous identiques)
 knobz |= (np.hypot(xx / k - 1913, yy / k - 77) < 54) | (np.hypot(xx / k - 1921, yy / k - 88) < 62)   # petit potard en haut a droite + son ombre : supprimes
 Lc = out.mean(2)
 T = np.asarray(Image.open(os.path.join(DESIGN, "plate_texture.png")).convert("RGB").resize((W, W), Image.LANCZOS), dtype=np.float32)[:H] / 255.0
