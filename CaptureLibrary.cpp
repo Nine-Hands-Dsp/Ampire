@@ -62,6 +62,18 @@ void CaptureLibrary::setRoot (const juce::File& dir)
     rescan();
 }
 
+juce::File CaptureLibrary::getLastFolder() const { const juce::ScopedLock sl (lock); return lastFolder; }
+
+void CaptureLibrary::setLastFolder (const juce::File& dir)
+{
+    {
+        const juce::ScopedLock sl (lock);
+        if (dir == lastFolder) return;
+        lastFolder = dir;
+    }
+    saveLists();
+}
+
 void CaptureLibrary::rescan()
 {
     stopThread (4000);
@@ -112,6 +124,7 @@ void CaptureLibrary::loadLists()
     {
         const juce::ScopedLock sl (lock);
         root = juce::File (x->getStringAttribute ("root"));
+        lastFolder = juce::File (x->getStringAttribute ("lastFolder"));
         favourites.clear(); recents.clear();
         for (auto* e : x->getChildWithTagNameIterator ("FAV")) favourites.add (e->getStringAttribute ("path"));
         for (auto* e : x->getChildWithTagNameIterator ("RECENT")) recents.add (e->getStringAttribute ("path"));
@@ -124,6 +137,7 @@ void CaptureLibrary::saveLists()
     {
         const juce::ScopedLock sl (lock);
         x.setAttribute ("root", root.getFullPathName());
+        x.setAttribute ("lastFolder", lastFolder.getFullPathName());
         for (auto& f : favourites) x.createNewChildElement ("FAV")->setAttribute ("path", f);
         for (auto& r : recents)    x.createNewChildElement ("RECENT")->setAttribute ("path", r);
     }

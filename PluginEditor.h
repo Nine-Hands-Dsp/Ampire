@@ -21,6 +21,7 @@ public:
     void openColourPicker (juce::Component* near);
     void chooseFolder (bool library);    // dossier des captures (bibliotheque) ou des IR
     void openLibrary (int slot);         // outil : ouvre la bibliotheque
+    void showStatus (const juce::String& msg);   // message temporaire dans l'ecran
 
 private:
     friend class AmpireContent;

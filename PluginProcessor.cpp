@@ -162,7 +162,9 @@ AmpireProcessor::AmpireProcessor()
         pendingValue[i].store (0.0f); pendingSet[i].store (false);
     }
     resetMidiMap();
-    lastFolder = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory);
+    // dossier de depart : dossier de captures par defaut, sinon le dernier dossier ouvert (memorises), sinon Documents
+    lastFolder = library.getLastFolder();
+    if (! lastFolder.isDirectory()) lastFolder = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory);
     accentColour = AmpireSettings::accent (JucePlugin_Name);
     lastOs = osFactorParam();
     lastSizeIdx = sizeIndex();
@@ -657,6 +659,9 @@ void AmpireProcessor::loadCapture (int s, const juce::File& file)
     }
     infoVersion++;
     lastFolder = file.getParentDirectory();
+    library.setLastFolder (lastFolder);
+    // premiere capture chargee sans dossier par defaut : son dossier devient le dossier de captures par defaut
+    if (! library.getRoot().isDirectory() && lastFolder.isDirectory()) library.setRoot (lastFolder);
     loader->add ({ s, true, file, gen });
 }
 

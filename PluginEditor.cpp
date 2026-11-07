@@ -1340,18 +1340,19 @@ void AmpireEditor::resetRenderer()
 void AmpireEditor::paint (juce::Graphics& g) { g.fillAll (col::outer); }
 
 void AmpireEditor::openLibrary (int slot) { content->openLibrary (slot); }
+void AmpireEditor::showStatus (const juce::String& msg) { content->showStatus (msg); }
 
 void AmpireEditor::chooseFolder (bool lib)
 {
     const auto cur = lib ? proc.library.getRoot() : AmpireSettings::irFolder (JucePlugin_Name);
-    folderChooser = std::make_unique<juce::FileChooser> (lib ? "Capture library folder (.nam files, subfolders included)" : "Default cab IR folder",
+    folderChooser = std::make_unique<juce::FileChooser> (lib ? "Default capture folder (.nam files, subfolders included)" : "Default cab IR folder",
                                                          cur.isDirectory() ? cur : proc.lastFolder);
     juce::Component::SafePointer<AmpireEditor> sp (this);
     folderChooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories, [sp, lib] (const juce::FileChooser& fc)
     {
         const auto f = fc.getResult();
         if (! f.isDirectory() || sp == nullptr) return;
-        if (lib) { sp->proc.library.setRoot (f); sp->content->showStatus ("Library: " + f.getFileName()); }
+        if (lib) { sp->proc.library.setRoot (f); sp->content->showStatus ("Default capture folder: " + f.getFileName()); }
         else { AmpireSettings::setIrFolder (JucePlugin_Name, f); sp->content->showStatus ("IR folder: " + f.getFileName()); }
     });
 }
@@ -1541,9 +1542,14 @@ static void showGearMenu (juce::Component& c)
     {
         const auto root = p->library.getRoot();
         folderM.addSectionHeader (root.isDirectory() ? root.getFullPathName() : juce::String ("No library folder"));
-        folderM.addItem (60, "Choose capture library folder...");
+        const auto info = p->getSlotInfo (0);
+        const juce::File cur (info.meta.path);
+        const bool canUse = info.loaded && ! info.fromEmbedded && juce::File::isAbsolutePath (info.meta.path)
+                            && cur.getParentDirectory().isDirectory() && cur.getParentDirectory() != root;
+        folderM.addItem (60, "Choose default capture folder...");
+        folderM.addItem (62, "Use this capture's folder as default", canUse);
         folderM.addItem (61, "Rescan library");
-        m.addSubMenu ("Capture library", folderM);
+        m.addSubMenu ("Capture folder", folderM);
     }
     for (int i = 0; i < 7; ++i) lowM.addItem (10 + i, i == 0 ? juce::String ("Off") : juce::String (lows[i]) + " Hz", true, std::abs (val ("lowcut") - (float) lows[i]) < 1.0f);
     for (int i = 0; i < 7; ++i) highM.addItem (20 + i, i == 0 ? juce::String ("Off") : juce::String (highs[i] / 1000.0, 1).replace (".0", "") + " kHz", true, std::abs (val ("highcut") - (float) highs[i]) < 10.0f);
@@ -1570,6 +1576,11 @@ static void showGearMenu (juce::Component& c)
         else if (r >= 50 && r <= 52) set ("inputsel", (float) (r - 50));
         else if (r == 60) { if (ed) ed->chooseFolder (true); }
         else if (r == 61) p->library.rescan();
+        else if (r == 62)
+        {
+            const auto dir = juce::File (p->getSlotInfo (0).meta.path).getParentDirectory();
+            if (dir.isDirectory()) { p->library.setRoot (dir); if (ed) ed->showStatus ("Default capture folder: " + dir.getFileName()); }
+        }
         else if (r >= 10 && r < 17) set ("lowcut", (float) lows[r - 10]);
         else if (r >= 20 && r < 27) set ("highcut", (float) highs[r - 20]);
         else if (! handleLearnChoice (r, p)) handleSizeChoice (r, sp.getComponent());

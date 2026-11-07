@@ -13,6 +13,7 @@ Neural Amp Modeler capture loader (A1 and A2) for guitar and bass — VST3 (Wind
 - Latence : 0 échantillon quand la fréquence du projet est celle de la capture (48 kHz) ; sinon rééchantillonnage, latence annoncée à l'hôte.
 - Changement de capture, de taille ou d'anti-repliement sans clic (fondu de 30 ms), chargement en arrière-plan.
 - Bibliothèque : dossier analysé en arrière-plan, recherche, filtres, favoris, récents, précédente / suivante, glisser-déposer d'un `.nam`.
+- **Dossier de captures par défaut**, mémorisé pour toutes les instances et tous les projets : la première capture chargée définit ce dossier ; on le change ensuite par l'engrenage → Capture folder (« Choose default capture folder… » ou « Use this capture's folder as default ») ou par FOLDER… dans la bibliothèque. Le dernier dossier ouvert est mémorisé lui aussi.
 - Vu-mètres plasma IN / OUT (échelle crête −50…0 dBFS), voyants d'écrêtage.
 - Presets `.ampire` avec la capture intégrée ; le projet du DAW garde aussi la capture.
 - MIDI Learn sur tous les potards et sur précédente / suivante (aucun CC assigné par défaut).

@@ -17,6 +17,9 @@ public:
 
     juce::File getRoot() const;
     void setRoot (const juce::File& dir);            // enregistre + relance le parcours
+    // dossier de captures par defaut : celui de la bibliotheque, memorise pour toutes les instances et tous les projets
+    juce::File getLastFolder() const;
+    void setLastFolder (const juce::File& dir);      // dernier dossier ouvert (memorise aussi)
     void rescan();
     bool isScanning() const { return scanning.load(); }
     int  scannedCount() const { return scanCount.load(); }
@@ -39,7 +42,7 @@ private:
     void saveLists();
 
     mutable juce::CriticalSection lock;
-    juce::File root;
+    juce::File root, lastFolder;
     juce::Array<CaptureMeta> entries;
     juce::HashMap<juce::String, CaptureMeta> cache;   // cle : chemin|taille|date
     juce::StringArray favourites, recents;
