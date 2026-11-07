@@ -62,9 +62,8 @@ juce_add_binary_data(AmpireAssets SOURCES
   assets/Inter-SemiBold.otf
   assets/Inter-Bold.otf
   assets/Inter-Medium.otf
-  assets/nine_hands_logo_blanc.png
   assets/bg.png
-  assets/knob.png
+  assets/led_on.png
   assets/toggle_up.png
   assets/toggle_down.png)
 

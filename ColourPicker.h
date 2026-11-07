@@ -34,6 +34,21 @@ namespace AmpireSettings
         x->setAttribute ("accent", juce::String::toHexString ((juce::int64) c));
         save (plugin, *x);
     }
+    // couleurs des vu-metres : LEDs et 3 LEDs de saturation du haut (communes a toutes les fenetres)
+    constexpr juce::uint32 kDefaultMeter = 0xffff8014, kDefaultSaturation = 0xffff2e0d;
+    inline juce::uint32 colourAttr (const juce::String& plugin, const char* name, juce::uint32 def)
+    {
+        const auto s = load (plugin)->getStringAttribute (name);
+        return s.isNotEmpty() ? (juce::uint32) s.getHexValue64() | 0xff000000u : def;
+    }
+    inline void setColourAttr (const juce::String& plugin, const char* name, juce::uint32 c)
+    {
+        auto x = load (plugin);
+        x->setAttribute (name, juce::String::toHexString ((juce::int64) c));
+        save (plugin, *x);
+    }
+    inline juce::uint32 meterColour (const juce::String& plugin)      { return colourAttr (plugin, "meterColour", kDefaultMeter); }
+    inline juce::uint32 saturationColour (const juce::String& plugin) { return colourAttr (plugin, "saturationColour", kDefaultSaturation); }
     // dossier des IR par defaut (vide = dernier dossier utilise), commun a toutes les fenetres
     inline juce::File irFolder (const juce::String& plugin)
     {

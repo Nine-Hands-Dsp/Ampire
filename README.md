@@ -14,8 +14,8 @@ Neural Amp Modeler capture loader (A1 and A2) for guitar and bass — VST3 (Wind
 - Changement de capture, de taille ou d'anti-repliement sans clic (fondu de 30 ms), chargement en arrière-plan.
 - Bibliothèque : dossier analysé en arrière-plan, recherche, filtres, favoris, récents, précédente / suivante, glisser-déposer d'un `.nam`.
 - **Dossier de captures par défaut**, mémorisé pour toutes les instances et tous les projets : la première capture chargée définit ce dossier ; on le change ensuite par l'engrenage → Capture folder (« Choose default capture folder… » ou « Use this capture's folder as default ») ou par FOLDER… dans la bibliothèque. Le dernier dossier ouvert est mémorisé lui aussi.
-- Vu-mètres plasma IN / OUT (échelle crête −50…0 dBFS), voyants d'écrêtage.
-- Presets `.ampire` avec la capture intégrée ; le projet du DAW garde aussi la capture.
+- Vu-mètres IN / OUT à 48 LEDs (échelle −50…0 dBFS), mémoire de crête qui s'efface au bout de 2 s, reflet des LEDs dans le verre, voyants d'écrêtage. Couleur des LEDs et des 3 LEDs de saturation réglables (engrenage → Meter LED colour / Saturation LED colour), avec fondu sur les 4 LEDs intermédiaires.
+- Presets `.ampire` avec la capture intégrée (petit bouton en haut à droite → Presets) ; le projet du DAW garde aussi la capture.
 - MIDI Learn sur tous les potards et sur précédente / suivante (aucun CC assigné par défaut).
 - Tailles de fenêtre 60 / 75 / 100 %.
 - Interface « anti-gel v2 » : rendu logiciel, aucun calcul lourd dans `paint()`, caches reconstruits par le timer, chien de garde de redessin.
@@ -39,7 +39,7 @@ cmake --build build --config Release --target Ampire_VST3
 JUCE 8.0.15 et NeuralAmpModelerCore v0.6.0 (avec Eigen et AudioDSPTools) sont téléchargés par CMake.
 Hors ligne : `-DJUCE_LOCAL_DIR=<juce>` et `-DFETCHCONTENT_SOURCE_DIR_NAMCORE=<clone NAM Core>`.
 
-`tools/` (Linux, option `-DAMPIRE_TOOLS=ON`) : captures de l'interface, rendu audio hors ligne et banc CPU ; `tools/render_art.py` calcule les images de la façade (`assets/`).
+`tools/` (Linux, option `-DAMPIRE_TOOLS=ON`) : captures de l'interface, rendu audio hors ligne et banc CPU ; `tools/design_assets.py` tire les images de l'interface (`assets/`) de la maquette `assets/design/ampire_design.png`.
 
 ## Crédits et licences
 

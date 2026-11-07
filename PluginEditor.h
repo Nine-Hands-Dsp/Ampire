@@ -18,7 +18,9 @@ public:
     void applyScaleIndex (int idx);
     static constexpr int numSizes = 3;
     AmpireProcessor& getProc() { return proc; }
-    void openColourPicker (juce::Component* near);
+    void openColourPicker (juce::Component* near, int which = 0);   // 0 accent, 1 LEDs des vu-metres, 2 saturation
+    void openPresetMenu (juce::Component* near);
+    void askPresetName();
     void chooseFolder (bool library);    // dossier des captures (bibliotheque) ou des IR
     void openLibrary (int slot);         // outil : ouvre la bibliotheque
     void showStatus (const juce::String& msg);   // message temporaire dans l'ecran
