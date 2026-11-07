@@ -1,0 +1,49 @@
+name: Build Ampire
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v5
+      - name: Configure
+        run: cmake -B build -G "Visual Studio 17 2022" -A x64
+      - name: Build VST3
+        run: cmake --build build --config Release --target Ampire_VST3 --parallel 4
+      - name: Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force out | Out-Null
+          Copy-Item -Recurse build/Ampire_artefacts/Release/VST3/Ampire.vst3 out/
+          Copy-Item README.md out/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Ampire-Windows-VST3
+          path: out
+
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v5
+      - name: Configure
+        run: cmake -B build -G Xcode
+      - name: Build VST3 + AU
+        run: cmake --build build --config Release --target Ampire_VST3 Ampire_AU -- -quiet
+      - name: Sign (ad hoc) and package
+        run: |
+          mkdir -p out
+          cp -R build/Ampire_artefacts/Release/VST3/Ampire.vst3 out/
+          cp -R build/Ampire_artefacts/Release/AU/Ampire.component out/
+          codesign --force --deep --sign - out/Ampire.vst3
+          codesign --force --deep --sign - out/Ampire.component
+          cp README.md out/
+          cd out && zip -qry ../Ampire-macOS.zip .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Ampire-macOS-VST3-AU
+          path: Ampire-macOS.zip
