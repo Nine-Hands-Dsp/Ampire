@@ -35,18 +35,23 @@ FetchContent_MakeAvailable(NamCore)
 
 file(GLOB NAM_SOURCES "${namcore_SOURCE_DIR}/NAM/*.cpp" "${namcore_SOURCE_DIR}/NAM/*/*.cpp")
 # bibliotheque OBJET : tous les fichiers sont lies (les architectures s'enregistrent par objets statiques)
-add_library(AmpireNam OBJECT ${NAM_SOURCES})
-target_include_directories(AmpireNam PUBLIC
+# en-tetes et definitions NAM (sans les objets) : pour le code partage du plugin
+add_library(AmpireNamHeaders INTERFACE)
+target_include_directories(AmpireNamHeaders INTERFACE
   ${namcore_SOURCE_DIR}
   ${namcore_SOURCE_DIR}/NAM
   ${namcore_SOURCE_DIR}/Dependencies/eigen
   ${namcore_SOURCE_DIR}/Dependencies/nlohmann
   ${namcore_SOURCE_DIR}/Dependencies/AudioDSPTools
   ${CMAKE_CURRENT_SOURCE_DIR})
-target_compile_definitions(AmpireNam PUBLIC NAM_SAMPLE_FLOAT NAM_ENABLE_A2_FAST)
+target_compile_definitions(AmpireNamHeaders INTERFACE NAM_SAMPLE_FLOAT NAM_ENABLE_A2_FAST)
+if(MSVC)
+  target_compile_definitions(AmpireNamHeaders INTERFACE NOMINMAX WIN32_LEAN_AND_MEAN _USE_MATH_DEFINES)
+endif()
+add_library(AmpireNam OBJECT ${NAM_SOURCES})
+target_link_libraries(AmpireNam PUBLIC AmpireNamHeaders)
 set_target_properties(AmpireNam PROPERTIES POSITION_INDEPENDENT_CODE ON)
 if(MSVC)
-  target_compile_definitions(AmpireNam PUBLIC NOMINMAX WIN32_LEAN_AND_MEAN _USE_MATH_DEFINES)
   target_compile_options(AmpireNam PRIVATE /bigobj /W0 "$<$<CONFIG:Release>:/O2>")
 else()
   target_compile_options(AmpireNam PRIVATE -w "$<$<CONFIG:Release>:-O3>")
@@ -96,13 +101,20 @@ target_compile_definitions(Ampire PUBLIC
 
 target_link_libraries(Ampire
   PRIVATE
-    AmpireNam
+    AmpireNamHeaders
     AmpireAssets
     juce::juce_audio_utils
     juce::juce_dsp
   PUBLIC
     juce::juce_recommended_config_flags
     juce::juce_recommended_warning_flags)
+
+# Les architectures NAM (SlimmableContainer, LSTM, ConvNet, Linear, Sequential...) s'enregistrent par objets
+# statiques que rien ne reference. Places dans la bibliotheque statique partagee, l'editeur de liens les jetterait
+# ("No config parser registered for architecture") : les objets NAM sont donc lies directement dans chaque format.
+foreach(fmt IN LISTS AMPIRE_FORMATS)
+  target_link_libraries(Ampire_${fmt} PRIVATE AmpireNam)
+endforeach()
 
 if(AMPIRE_TOOLS)
   add_subdirectory(tools)
