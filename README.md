@@ -18,6 +18,7 @@ Neural Amp Modeler capture loader (A1 and A2) for guitar and bass — VST3 (Wind
 - Presets `.ampire` avec la capture intégrée (petit bouton en haut à droite → Presets) ; le projet du DAW garde aussi la capture.
 - MIDI Learn sur tous les potards et sur précédente / suivante (aucun CC assigné par défaut).
 - Tailles de fenêtre 60 / 75 / 100 %.
+- Voyant POWER : couleur et glow réglables (petit potard en haut à droite → Colours & glow).
 - Interface « anti-gel v2 » : rendu logiciel, aucun calcul lourd dans `paint()`, caches reconstruits par le timer, chien de garde de redessin.
 
 ## Installation

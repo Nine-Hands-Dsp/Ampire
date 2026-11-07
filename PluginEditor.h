@@ -20,6 +20,10 @@ public:
     AmpireProcessor& getProc() { return proc; }
     void openColourPicker (juce::Component* near, int which = 0);   // 0 accent, 1 LEDs des vu-metres, 2 saturation
     void openPresetMenu (juce::Component* near);
+    float getScreenGlow() const;
+    float getLedGlow() const;
+    void setScreenGlow (float v);    // halo des textes de l'ecran (0 = aucun)
+    void setLedGlow (float v);       // halo du voyant POWER (1 = maquette)
     void askPresetName();
     void chooseFolder (bool library);    // dossier des captures (bibliotheque) ou des IR
     void openLibrary (int slot);         // outil : ouvre la bibliotheque

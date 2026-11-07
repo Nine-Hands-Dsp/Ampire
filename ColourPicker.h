@@ -47,6 +47,20 @@ namespace AmpireSettings
         x->setAttribute (name, juce::String::toHexString ((juce::int64) c));
         save (plugin, *x);
     }
+    constexpr juce::uint32 kDefaultLed = 0xffff8a1e;          // voyant POWER (orange de la maquette)
+    inline juce::uint32 ledColour (const juce::String& plugin) { return colourAttr (plugin, "ledColour", kDefaultLed); }
+    // intensite du halo (0 = aucun, 1 = maquette) : voyant POWER et textes de l'ecran
+    inline float glowAttr (const juce::String& plugin, const char* name, float def)
+    {
+        const auto x = load (plugin);
+        return x->hasAttribute (name) ? (float) x->getDoubleAttribute (name) : def;
+    }
+    inline void setGlowAttr (const juce::String& plugin, const char* name, float v)
+    {
+        auto x = load (plugin);
+        x->setAttribute (name, v);
+        save (plugin, *x);
+    }
     inline juce::uint32 meterColour (const juce::String& plugin)      { return colourAttr (plugin, "meterColour", kDefaultMeter); }
     inline juce::uint32 saturationColour (const juce::String& plugin) { return colourAttr (plugin, "saturationColour", kDefaultSaturation); }
     // dossier des IR par defaut (vide = dernier dossier utilise), commun a toutes les fenetres

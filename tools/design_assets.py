@@ -91,36 +91,46 @@ for c in range(3):
 # ---- 2. valeurs au-dessus des potards, titre et libelles du potard A2 SIZE (zones entieres, metal de la plaque)
 m = np.zeros((H, W), bool)
 for cx in (333, 547, 760, 973, 1187, 1400): m |= box(cx - 26, 389, cx + 26, 416)
-m |= box(1336, 339, 1466, 367)                 # « A2 SIZE »
-m |= box(1312, 617, 1366, 643)                 # « -40 »
-m |= box(1438, 617, 1502, 643)                 # « FULL »
+# toutes les inscriptions de la facade sont redessinees par le plugin (meme rendu pour toutes) : on les retire du fond
+for x0_, x1_ in ((288, 386), (507, 590), (700, 822), (913, 1032), (1120, 1252), (1336, 1466), (1658, 1774)):
+    m |= box(x0_, 339, x1_, 367)               # INPUT ... OUTPUT, A2 SIZE, POWER
+for x0_, x1_ in ((244, 292), (375, 428), (473, 497), (597, 632), (686, 710), (811, 846), (899, 923), (1021, 1056),
+                 (1096, 1145), (1223, 1277), (1312, 1366), (1438, 1502)):
+    m |= box(x0_, 616, x1_, 645)               # graduations -20 / +20, 0 / 10, -40 / +40, A2
+m |= box(1694, 412, 1741, 439)                 # « ON »
+m |= box(1692, 598, 1750, 624)                 # « OFF »
 out = donor_fill(out, m, 652, 684)
 
-# ---- 3. repere des potards : remplace par le metal du chapeau tourne autour de l'axe
+# ---- 3. repere des potards (et son sillon) retire : le chapeau en metal tourne (rayures concentriques, reflets qui ne
+#         varient que doucement avec l'angle) est refait en coordonnees polaires, par interpolation en angle a rayon constant
 KN = [(331.5, 531), (547.2, 531), (760.7, 531), (974.5, 531), (1187.7, 531), (1402.4, 531)]
 yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
 for cx, cy in KN:
-    bar = box(cx - 11, 464, cx + 11, 508) & (L > 0.32)
-    bar = nd.binary_dilation(bar, iterations=8) & box(cx - 18, 460, cx + 18, 514)
-    X, Y = (xx - cx * k), (yy - cy * k)
-    acc = np.zeros_like(out); 
-    for ang in (24.0, -24.0, 32.0, -32.0):
-        a = np.radians(ang); c, s = np.cos(a), np.sin(a)
-        sx = cx * k + X * c - Y * s; sy = cy * k + X * s + Y * c
-        for ch in range(3):
-            acc[..., ch] += nd.map_coordinates(out[..., ch], [sy, sx], order=1)
-    acc /= 4
-    # recalage du niveau par couronne : comparer a l'original juste a cote du repere (meme rayon)
-    rad = np.hypot(X, Y) / k
-    near = box(cx - 30, 460, cx + 30, 516) & ~nd.binary_dilation(bar, iterations=3)
-    for r0 in range(0, 70, 3):
-        ring_in = bar & (rad >= r0) & (rad < r0 + 3)
-        ring_nb = near & (rad >= r0) & (rad < r0 + 3)
-        if ring_in.sum() < 3 or ring_nb.sum() < 3: continue
-        gain = out[ring_nb].mean(0) / np.maximum(acc[ring_nb].mean(0), 1e-3)
-        acc[ring_in] *= np.clip(gain, 0.5, 2.0)
-    soft = nd.gaussian_filter(bar.astype(np.float32), 1.2); soft = np.maximum(soft, bar)
-    out = out * (1 - soft[..., None]) + acc * soft[..., None]
+    mask = nd.binary_dilation(box(cx - 13, 461, cx + 13, 510), iterations=2)
+    NR, NT = int(68 * k), 1440
+    rr_ = np.linspace(0, 68 * k, NR)[:, None]; tt = np.linspace(-np.pi, np.pi, NT, endpoint=False)[None, :]
+    px_ = cx * k + rr_ * np.sin(tt); py_ = cy * k - rr_ * np.cos(tt)          # theta = 0 en haut
+    pol = np.stack([nd.map_coordinates(out[..., c], [py_, px_], order=1) for c in range(3)], -1)
+    pm = nd.map_coordinates(mask.astype(np.float32), [py_, px_], order=1) > 0.01
+    tix = np.arange(NT)
+    for r in range(NR):
+        m = pm[r]
+        if not m.any() or m.all(): continue
+        good = ~m
+        # interpolation circulaire en angle
+        gx = np.concatenate([tix[good] - NT, tix[good], tix[good] + NT])
+        for c in range(3):
+            gv = np.tile(pol[r, good, c], 3)
+            pol[r, m, c] = np.interp(tix[m], gx, gv)
+    # retour en cartesien pour les pixels du masque
+    ys_, xs_ = np.nonzero(mask)
+    dx_, dy_ = xs_ - cx * k, ys_ - cy * k
+    r_ = np.hypot(dx_, dy_) / (68 * k) * (NR - 1)
+    t_ = (np.arctan2(dx_, -dy_) + np.pi) / (2 * np.pi) * NT
+    inside = r_ < NR - 1
+    for c in range(3):
+        v = nd.map_coordinates(np.concatenate([pol[..., c], pol[:, :1, c]], 1), [r_, t_], order=1, mode="nearest")
+        out[ys_[inside], xs_[inside], c] = v[inside]
 
 # ---- 4. vu-metres : barres eteintes (verre sombre), debord orange retire, voyants d'ecretage eteints
 for x0, x1, win in ((66, 87, (46, 306, 137, 745)), (1916, 1937, (1861, 306, 1952, 745))):
@@ -205,6 +215,60 @@ for c_ in range(3):                                   # couronne de plaque autou
     patch[..., c_] = np.where(ann, patch[..., c_] * reg[..., c_][ann].mean() / max(patch[..., c_][ann].mean(), 1e-4), patch[..., c_])
 out[bx[1] + dy:bx[3] + dy, bx[0]:bx[2]] = reg * (1 - pal[..., None]) + patch * pal[..., None]
 
+# ---- 6c. texture de la facade remplacee par assets/design/plate_texture.png ; les anciennes sources de lumiere de la
+#          plaque (reflets, degrades) sont retirees, seules les ombres de contact des commandes sont gardees
+from PIL import ImageDraw
+alpha0 = np.asarray(Image.open(SRC))[..., 3] if Image.open(SRC).mode == "RGBA" else np.full((H, W), 255, np.uint8)
+case = nd.binary_fill_holes(alpha0 > 250)
+inner = nd.binary_erosion(case, iterations=int(15 * k))
+fgi = Image.new("L", (W, H), 0); d_ = ImageDraw.Draw(fgi)
+def RR(x0_, y0_, x1_, y1_, r_=0): d_.rounded_rectangle([x0_ * k, y0_ * k, x1_ * k, y1_ * k], radius=r_ * k, fill=255)
+def CC(cx_, cy_, r_): d_.ellipse([(cx_ - r_) * k, (cy_ - r_) * k, (cx_ + r_) * k, (cy_ + r_) * k], fill=255)
+RR(140, 110, 1695, 305, 14)
+for xb in (1707, 1791, 1874): RR(xb, 165, xb + 76, 241, 8)
+CC(1913, 75, 39)
+RR(46, 306, 137, 745, 12); RR(1861, 306, 1952, 745, 12)
+for cxk in (336, 549, 761, 974, 1187, 1401): CC(cxk, 535, 76)
+CC(1618.4, 531.0, 17)
+RR(1546, 340, 1556, 715, 3)
+fgm = np.asarray(fgi) > 0
+panel = inner & ~fgm
+Lc = out.mean(2)
+T = np.asarray(Image.open(os.path.join(DESIGN, "plate_texture.png")).convert("RGB").resize((W, W), Image.LANCZOS), dtype=np.float32)[:H] / 255.0
+so_ = (out.max(2) - out.min(2)) / np.maximum(out.max(2), 1e-3)
+tophat = Lc - nd.grey_opening(Lc, size=(31, 31))
+zone = box(140, 325, 1850, 665)
+txt = nd.binary_dilation(panel & zone & (tophat > 0.18) & (Lc > 0.35) & (so_ < 0.2), iterations=3) & panel
+base_ = panel & ~txt
+def nblur(v, m, s_):
+    return nd.gaussian_filter(v * m, s_) / np.maximum(nd.gaussian_filter(m.astype(np.float32), s_), 1e-4)
+Ls = nblur(Lc, base_, 6.0)
+Mloc = nblur(Lc, base_, 60.0)
+S = np.clip(Ls / np.maximum(Mloc, 1e-3), 0.3, 1.0)          # ombres de contact seulement (aucun ancien reflet)
+newp = np.clip(T * S[..., None], 0, 1)
+oldp = np.stack([nblur(out[..., c], base_, 3.0) for c in range(3)], -1)
+ink = np.array([0.86, 0.86, 0.85], np.float32)
+a_ = np.clip((Lc - oldp.mean(2)) / np.maximum(ink.mean() - oldp.mean(2), 1e-3), 0, 1) * txt
+inkcol = np.clip(np.where(a_[..., None] > 0.02, (out - (1 - a_[..., None]) * oldp) / np.maximum(a_[..., None], 0.02), ink), 0, 1)
+newpix = a_[..., None] * inkcol + (1 - a_[..., None]) * newp
+# bande de raccord contre les commandes et le biseau : pixels d'origine (aretes, ombres) remis au niveau de la nouvelle texture
+Mg = nblur(Lc, base_, 90.0)
+Tl = nd.gaussian_filter(T.mean(2), 6.0)
+gain_ = np.clip(Tl / np.maximum(Mg, 1e-3), 0.3, 3.0)
+dist = nd.distance_transform_edt(panel)
+wb = np.clip((16.0 - dist) / 10.0, 0, 1)
+bandpix = np.clip(out * gain_[..., None], 0, 1)
+newpix = np.where(txt[..., None], newpix, wb[..., None] * bandpix + (1 - wb[..., None]) * newpix)
+out = np.where(panel[..., None], newpix, out)
+# marges hors masque qui montrent encore l'ancienne plaque (meme niveau, sans couleur) : remises au niveau de la texture
+btn = np.zeros((H, W), bool)
+for xb in (1707, 1791, 1874): btn |= box(xb + 4, 169, xb + 72, 237)
+dpan = nd.distance_transform_edt(~panel)
+Z = case & ~panel & (dpan <= 40) & ~btn
+pz = np.exp(-((Lc - Mg) / 0.07) ** 2) * np.clip((0.25 - so_) / 0.15, 0, 1) * np.clip((40 - dpan) / 15, 0, 1)
+pz = nd.gaussian_filter(pz, 2.0) * Z
+out = out * (1 - pz[..., None]) + np.clip(out * gain_[..., None], 0, 1) * pz[..., None]
+
 # ---- 7. logos officiels en blanc
 def svg_alpha(name, h_px):
     png = subprocess.run(["rsvg-convert", "-w", "6000", os.path.join(ASSETS, "logos", name)], check=True, capture_output=True).stdout
@@ -233,19 +297,24 @@ LEDB = (1570, 474, 1667, 571)
 lit = im[int(LEDB[1] * k):int(LEDB[3] * k), int(LEDB[0] * k):int(LEDB[2] * k)]
 hh_, ww_ = lit.shape[:2]
 yy_, xx_ = np.mgrid[0:hh_, 0:ww_]
-rr_ = np.hypot(xx_ / k + LEDB[0] - 1618.4, yy_ / k + LEDB[1] - 522.5)   # decoupe a l'ancienne place, posee 8,5 plus bas
-al_ = np.clip((46 - rr_) / 6, 0, 1)
-rgba = np.dstack([lit, al_])
+rr_ = np.hypot(xx_ / k + LEDB[0] - 1618.4, yy_ / k + LEDB[1] - 522.5)
+# seulement la lumiere (lentille + halo), sans la plaque de la maquette : alpha = exces de lumiere sur la plaque autour
+plate_c = np.median(lit[(rr_ > 43) & (rr_ < 48)], axis=0)
+excess = np.clip((lit.max(2) - plate_c.max()) / (1.0 - plate_c.max()), 0, 1)
+al_ = np.clip(excess * 1.15, 0, 1) * np.clip((47 - rr_) / 6, 0, 1)
+al_ = np.where(rr_ < 18, al_, nd.gaussian_filter(al_, 2.5 * k))      # halo lisse (sans le grain de la plaque)
+rgb_ = np.clip((lit - (1 - al_[..., None]) * plate_c) / np.maximum(al_[..., None], 1e-3), 0, 1)
+rgba = np.dstack([rgb_, al_])
 sz = (int(round((LEDB[2] - LEDB[0]) * PX)), int(round((LEDB[3] - LEDB[1]) * PX)))
 Image.fromarray((rgba * 255 + 0.5).astype(np.uint8), "RGBA").resize(sz, Image.LANCZOS).save(os.path.join(ASSETS, "led_on.png"))
 
 # inverseur : images fournies (fond transparent), rondelle (rayon 665 px) mise au rayon 46 de la maquette, ombre portee
 def toggle(src, washer_c, out_name):
     t = Image.open(os.path.join(DESIGN, src)).convert("RGBA")
-    sc = 54.0 * PX / 665.0
+    sc = 40.5 * PX / 665.0                    # 25 % plus petit
     t = t.resize((int(t.size[0] * sc), int(t.size[1] * sc)), Image.LANCZOS)
     cx, cy = washer_c[0] * sc, washer_c[1] * sc
-    S_ = int(round(130 * PX))                      # carre de 130 unites de maquette autour de l'axe
+    S_ = int(round(170 * PX))                      # carre de 170 unites de maquette autour de l axe (levier entier)
     canvas = Image.new("RGBA", (S_, S_), (0, 0, 0, 0))
     canvas.alpha_composite(t, (int(round(S_ / 2 - cx)), int(round(S_ / 2 - cy))))
     a_ = np.asarray(canvas, dtype=np.float32) / 255.0

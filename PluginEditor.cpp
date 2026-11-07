@@ -70,7 +70,7 @@ namespace
     const juce::Point<float> kJewel (D (1618.4f), D (531.0f));             // voyant et inverseur sur l'axe des potards
     const juce::Rectangle<float> rLedSprite = R (1570, 482.5f, 1667, 579.5f);
     const juce::Point<float> kToggle (D (1721.0f), D (531.0f));
-    const float kToggleSprite = D (130.0f);
+    const float kToggleSprite = D (170.0f);
     const juce::Point<float> kGear (D (1913.0f), D (75.0f));
     const float kGearR = D (39.0f);
     // ecran : infos de la capture a gauche, etat (CPU, latence, messages) a droite du filet
@@ -756,6 +756,7 @@ public:
 
         updateKnobSet();
         refreshInfos();
+        rebuildLedImage();
         startTimerHz (30);
     }
 
@@ -777,6 +778,7 @@ public:
         else drawStatic (g, false);
 
         drawJewel (g);
+        drawFaceLabels (g);
         drawKnobValues (g);
         drawSizeLabels (g);
         drawSlot (g, 0);
@@ -802,19 +804,46 @@ public:
         if (n == 2) return sizeStep() == 1 ? "FULL" : "LITE";
         return juce::String (sizeStep() + 1) + " / " + juce::String (n);
     }
-    juce::Rectangle<int> valueArea (int i) const { return toInt ({ kKnobX[i] - D (60.0f), D (380.0f), D (120.0f), D (40.0f) }); }
+    // ---- serigraphie de la facade : TOUTES les inscriptions (titres, valeurs, graduations, POWER / ON / OFF) sont
+    //      dessinees ici avec le meme rendu (police, blanc, ombre) ; positions et hauteurs de capitale relevees sur la maquette
+    static juce::Font silkFont (float capDesign, float kerning, bool medium = false)
+    {
+        const float h = D (capDesign) / 0.727f * 1.15f;
+        return (medium ? fMedium (h) : fSemi (h)).withExtraKerningFactor (kerning);
+    }
+    static void silkText (juce::Graphics& g, const juce::String& t, float cxDesign, float baselineDesign, const juce::Font& f, float alpha = 1.0f)
+    {
+        g.setFont (f);
+        const auto r = juce::Rectangle<float> (D (cxDesign) - D (110.0f), D (baselineDesign) - f.getAscent(), D (220.0f), f.getHeight());
+        g.setColour (juce::Colours::black.withAlpha (0.45f * alpha));
+        g.drawText (t, r.translated (0.0f, 0.6f), juce::Justification::centredTop, false);
+        g.setColour (kSilk.withAlpha (alpha));
+        g.drawText (t, r, juce::Justification::centredTop, false);
+    }
+    static constexpr float kTitleX[6] = { 336.9f, 548.6f, 761.0f, 972.6f, 1185.8f, 1400.4f };
+    static constexpr float kScaleX[6][2] = { { 268.2f, 401.8f }, { 485.4f, 614.1f }, { 698.0f, 828.8f },
+                                             { 910.7f, 1038.7f }, { 1120.6f, 1250.3f }, { 1338.0f, 1469.6f } };
+    juce::Rectangle<int> valueArea (int i) const { return toInt ({ D (kTitleX[i]) - D (70.0f), D (385.0f), D (140.0f), D (32.0f) }); }
     void drawKnobValues (juce::Graphics& g)
     {
-        g.setFont (fSemi (10.2f));
+        static const juce::Font f = silkFont (19.4f, 0.0f);
         for (int i = 0; i < 6; ++i)
+            silkText (g, knobValueText (i), kTitleX[i], 412.2f, f, (i == 5 && numSizes() < 2) ? 0.40f : 1.0f);
+    }
+    void drawFaceLabels (juce::Graphics& g)
+    {
+        static const juce::Font title = silkFont (20.5f, 0.07f), scale = silkFont (16.8f, 0.03f, true), sw = silkFont (19.0f, 0.05f);
+        const char* names[5] = { "INPUT", "BASS", "MIDDLE", "TREBLE", "OUTPUT" };
+        const char* scales[5][2] = { { "-20", "+20" }, { "0", "10" }, { "0", "10" }, { "0", "10" }, { "-40", "+40" } };
+        for (int i = 0; i < 5; ++i)
         {
-            const float a = (i == 5 && numSizes() < 2) ? 0.40f : 1.0f;
-            const auto r = juce::Rectangle<float> (kKnobX[i] - D (60.0f), kValueBase - 10.0f, D (120.0f), 12.0f);
-            g.setColour (juce::Colours::black.withAlpha (0.45f * a));
-            g.drawText (knobValueText (i), r.translated (0.0f, 0.6f), juce::Justification::centredBottom, false);
-            g.setColour (kSilk.withAlpha (a));
-            g.drawText (knobValueText (i), r, juce::Justification::centredBottom, false);
+            silkText (g, names[i], kTitleX[i], 363.3f, title);
+            silkText (g, scales[i][0], kScaleX[i][0], 640.5f, scale);
+            silkText (g, scales[i][1], kScaleX[i][1], 640.5f, scale);
         }
+        silkText (g, "POWER", 1715.8f, 363.3f, title);
+        silkText (g, "ON", 1716.9f, 435.0f, sw);
+        silkText (g, "OFF", 1720.3f, 620.0f, sw);
     }
 
     // voyant rubis (allume quand Ampire est en marche)
@@ -832,30 +861,83 @@ public:
     }
     void drawSizeLabels (juce::Graphics& g)
     {
+        static const juce::Font title = silkFont (20.5f, 0.07f), scale = silkFont (16.8f, 0.03f, true);
         const int n = numSizes();
         const bool ladder = n > 2;
-        const float cx = kKnobX[5];
         const float a = n >= 2 ? 1.0f : 0.40f;
-        auto silk = [&] (const juce::String& t, juce::Rectangle<float> r, juce::Font f, float alpha)
-        {
-            g.setFont (f);
-            g.setColour (juce::Colours::black.withAlpha (0.45f * a));
-            g.drawText (t, r.translated (0.0f, 0.6f), juce::Justification::centredBottom);
-            g.setColour (kSilk.withAlpha (alpha * a));
-            g.drawText (t, r, juce::Justification::centredBottom);
-        };
-        juce::ignoreUnused (cx);
-        silk (ladder ? "GAIN STEP" : "A2 SIZE", { D (1300.8f), D (363.3f) - 10.0f, D (200.0f), 12.0f }, fSemi (10.5f).withExtraKerningFactor (0.12f), 1.0f);
-        silk (ladder ? "LOW" : "LITE",  { D (1338.0f) - D (50.0f), D (638.9f) - 9.0f, D (100.0f), 11.0f }, fSemi (9.0f), 1.0f);
-        silk (ladder ? "HIGH" : "FULL", { D (1469.7f) - D (50.0f), D (638.9f) - 9.0f, D (100.0f), 11.0f }, fSemi (9.0f), 1.0f);
+        silkText (g, ladder ? "GAIN STEP" : "A2 SIZE", kTitleX[5], 363.3f, title, a);
+        silkText (g, ladder ? "LOW" : "LITE", kScaleX[5][0], 640.5f, scale, a);
+        silkText (g, ladder ? "HIGH" : "FULL", kScaleX[5][1], 640.5f, scale, a);
     }
     juce::Rectangle<int> sizeLabelArea() const { return toInt (R (1270, 330, 1530, 650)); }
 
     void drawJewel (juce::Graphics& g)
     {
-        // voyant POWER : allume = image de la maquette posee sur le voyant eteint du fond
-        if (power.norm() > 0.5f) drawSpriteIn (g, Art::get().ledOn, rLedSprite);
+        // voyant POWER : allume = image de la maquette (recoloree selon le reglage) posee sur le voyant eteint du fond
+        if (power.norm() > 0.5f) drawSpriteIn (g, ledImage.isValid() ? ledImage : Art::get().ledOn, rLedSprite);
     }
+public:
+    // couleur et halo du voyant : l'image de la maquette est recoloree une fois (thread de messages, hors paint)
+    juce::Colour ledColour { AmpireSettings::ledColour (JucePlugin_Name) };
+    float ledGlow = AmpireSettings::glowAttr (JucePlugin_Name, "ledGlow", 1.0f);
+    float screenGlow = 0.0f;                         // pas de halo sur l'ecran (texte blanc fixe)
+    void rebuildLedImage()
+    {
+        const auto& src = Art::get().ledOn;
+        if (ledColour.getARGB() == AmpireSettings::kDefaultLed && std::abs (ledGlow - 1.0f) < 0.01f) { ledImage = {}; askRepaint (toInt (rLedSprite)); return; }
+        juce::Image img (juce::Image::ARGB, src.getWidth(), src.getHeight(), true);
+        const float cx = src.getWidth() * (1618.4f - 1570.0f) / 97.0f, cy = src.getHeight() * (522.5f - 474.0f) / 97.0f;
+        const float lensR = src.getWidth() * 15.0f / 97.0f;
+        const float cr = ledColour.getFloatRed(), cg = ledColour.getFloatGreen(), cb = ledColour.getFloatBlue();
+        for (int y = 0; y < src.getHeight(); ++y)
+            for (int x = 0; x < src.getWidth(); ++x)
+            {
+                const auto p = src.getPixelAt (x, y);
+                const float a = p.getFloatAlpha();
+                if (a <= 0.0f) continue;
+                const float r = p.getFloatRed(), gg = p.getFloatGreen(), b = p.getFloatBlue();
+                const float v = juce::jmax (r, gg, b), w = v > 0.0f ? juce::jmin (r, gg, b) / v : 0.0f;   // luminosite / blancheur
+                const float d = std::hypot ((float) x - cx, (float) y - cy);
+                // halo (hors de la lentille) : seule la lumiere orange est remplacee et dosee ; bague et plaque gardees
+                const float glowZone = juce::jlimit (0.0f, 1.0f, (d - lensR) / (src.getWidth() * 3.0f / 97.0f));
+                const float hue = juce::jlimit (0.0f, 1.0f, (p.getSaturation() - 0.25f) / 0.35f);      // part coloree du pixel
+                const float k = 1.0f + (ledGlow - 1.0f) * glowZone * hue;
+                const float nr = juce::jlimit (0.0f, 1.0f, (cr * (1.0f - w) + w) * v * k);
+                const float ng = juce::jlimit (0.0f, 1.0f, (cg * (1.0f - w) + w) * v * k);
+                const float nb = juce::jlimit (0.0f, 1.0f, (cb * (1.0f - w) + w) * v * k);
+                const float mix = juce::jmax (hue, 1.0f - glowZone);    // pixels neutres du halo (plaque) : inchanges
+                img.setPixelAt (x, y, juce::Colour::fromFloatRGBA (r + (nr - r) * mix, gg + (ng - gg) * mix, b + (nb - b) * mix,
+                                                                    juce::jlimit (0.0f, 1.0f, a * (1.0f + (juce::jmin (ledGlow, 1.0f) - 1.0f) * glowZone * hue))));
+            }
+        ledImage = img;
+        askRepaint (toInt (rLedSprite));
+    }
+private:
+    juce::Image ledImage;
+    // texte de l'ecran : couleur du nuancier « Screen colour » et halo optionnel (lueur d'afficheur)
+    void screenText (juce::Graphics& g, const juce::String& t, juce::Rectangle<float> r, juce::Justification j, bool fitted = false)
+    {
+        const auto c = textCol;
+        if (screenGlow > 0.01f)
+        {
+            for (int pass = 0; pass < 2; ++pass)
+            {
+                const float rad = pass == 0 ? 0.9f : 2.0f, al = (pass == 0 ? 0.075f : 0.04f) * screenGlow * c.getFloatAlpha();
+                g.setColour (c.withAlpha (juce::jmin (1.0f, al)));
+                for (int i = 0; i < 8; ++i)
+                {
+                    const float an = juce::MathConstants<float>::twoPi * (float) i / 8.0f;
+                    const auto rr = r.translated (rad * std::cos (an), rad * std::sin (an));
+                    if (fitted) g.drawFittedText (t, rr.toNearestInt(), j, 3, 0.8f); else g.drawText (t, rr, j, true);
+                }
+            }
+            g.setColour (c);
+        }
+        if (fitted) g.drawFittedText (t, r.toNearestInt(), j, 3, 0.8f); else g.drawText (t, r, j, true);
+    }
+    juce::Colour textCol;
+    void setTextCol (juce::Graphics& g, juce::Colour c) { textCol = c; g.setColour (c); }
+public:
 
     void drawSlot (juce::Graphics& g, int s)
     {
@@ -872,17 +954,17 @@ public:
         else if (inf.loaded)
         {
             const auto title = m.title.isNotEmpty() ? m.title : m.fileName;
-            g.setColour (amber (1.0f));
+            setTextCol (g, amber (1.0f));
             g.setFont (fName (16.0f));
-            g.drawText (title, juce::Rectangle<float> (xL, D (182.8f) - 14.5f, w, 18.0f), juce::Justification::bottomLeft, true);
+            screenText (g, title, juce::Rectangle<float> (xL, D (182.8f) - 14.5f, w, 18.0f), juce::Justification::bottomLeft);
             const auto gear = (m.gearMake + " " + m.gearModel).trim();
             juce::StringArray l2;
             if (gear.isNotEmpty()) l2.add (gear);
             if (m.gearType.isNotEmpty()) l2.add (m.gearType.replace ("_", " "));
             if (m.toneType.isNotEmpty()) l2.add (m.toneType.replace ("_", " "));
-            g.setColour (amber (0.7f));
+            setTextCol (g, amber (0.7f));
             g.setFont (fMedium (9.6f));
-            g.drawText (l2.isEmpty() ? juce::String ("no gear information") : l2.joinIntoString (dotSep()), juce::Rectangle<float> (xS, D (221.0f) - 9.0f, w, 12.0f), juce::Justification::bottomLeft, true);
+            screenText (g, l2.isEmpty() ? juce::String ("no gear information") : l2.joinIntoString (dotSep()), juce::Rectangle<float> (xS, D (221.0f) - 9.0f, w, 12.0f), juce::Justification::bottomLeft);
             juce::String fmt = m.family;
             if (m.slimmable && ! m.breakpoints.empty())
             {
@@ -899,16 +981,16 @@ public:
             if (m.hasInputLevel) fmt << dotSep() << "cal " << juce::String (m.inputLevel, 1) << " dBu";
             if (m.esr >= 0.0) fmt << dotSep() << "ESR " << juce::String (m.esr, 4);
             if (inf.fromEmbedded) fmt << dotSep() << "project copy";
-            g.setColour (amber (0.5f));
+            setTextCol (g, amber (0.5f));
             g.setFont (fMedium (9.3f));
-            g.drawText (fmt, juce::Rectangle<float> (xS, D (263.9f) - 8.5f, w, 11.0f), juce::Justification::bottomLeft, true);
+            screenText (g, fmt, juce::Rectangle<float> (xS, D (263.9f) - 8.5f, w, 11.0f), juce::Justification::bottomLeft);
         }
-        else if (inf.loading) { g.setColour (amber (0.8f)); g.setFont (fName (14.0f)); g.drawText ("LOADING...", juce::Rectangle<float> (xL, D (182.8f) - 14.5f, w, 18.0f), juce::Justification::bottomLeft); }
+        else if (inf.loading) { setTextCol (g, amber (0.8f)); g.setFont (fName (14.0f)); screenText (g, "LOADING...", juce::Rectangle<float> (xL, D (182.8f) - 14.5f, w, 18.0f), juce::Justification::bottomLeft); }
         else
         {
-            g.setColour (kSilk.withAlpha (0.45f));
+            setTextCol (g, kSilk.withAlpha (0.45f));
             g.setFont (fName (14.0f));
-            g.drawText ("EMPTY", juce::Rectangle<float> (xL, D (182.8f) - 14.5f, w, 18.0f), juce::Justification::bottomLeft);
+            screenText (g, "EMPTY", juce::Rectangle<float> (xL, D (182.8f) - 14.5f, w, 18.0f), juce::Justification::bottomLeft);
             g.setFont (fMedium (9.6f));
             g.drawFittedText ("Click here or on the library button, use the arrows, or drop a .nam file (NAM A1 / A2)",
                               juce::Rectangle<float> (xS, D (200.0f), w, 26.0f).toNearestInt(), juce::Justification::topLeft, 2);
@@ -1015,21 +1097,21 @@ public:
         const auto st = statusText();
         if (st.isNotEmpty())
         {
-            g.setColour (kSilk);
+            setTextCol (g, kSilk);
             g.setFont (fSemi (10.5f));
-            g.drawFittedText (st, r.toNearestInt(), juce::Justification::centred, 3, 0.8f);
+            screenText (g, st, r, juce::Justification::centred, true);
         }
         else
         {
-            g.setColour (kSilk.withAlpha (0.92f));
+            setTextCol (g, kSilk.withAlpha (0.92f));
             g.setFont (fMedium (9.3f));
             const int lat = proc.getReportedLatency();
             const double ms = 1000.0 * lat / juce::jmax (1.0, proc.getHostRate());
             juce::String k = juce::String (proc.getHostRate() / 1000.0, 1); if (k.endsWith (".0")) k = k.dropLastCharacters (2);
             const float cx = D (1467.0f);
-            g.drawText ("CPU " + juce::String (shownCpu, 1) + " %" + dotSep() + k + " kHz" + dotSep() + "AA " + juce::String (osShown) + "x",
+            screenText (g, "CPU " + juce::String (shownCpu, 1) + " %" + dotSep() + k + " kHz" + dotSep() + "AA " + juce::String (osShown) + "x",
                         juce::Rectangle<float> (cx - 90.0f, D (172.2f) - 8.5f, 180.0f, 11.0f), juce::Justification::centredBottom);
-            g.drawText ("LATENCY " + (lat == 0 ? juce::String ("0 (none added)") : juce::String (lat) + " smp  " + juce::String (ms, 2) + " ms"),
+            screenText (g, "LATENCY " + (lat == 0 ? juce::String ("0 (none added)") : juce::String (lat) + " smp  " + juce::String (ms, 2) + " ms"),
                         juce::Rectangle<float> (cx - 90.0f, D (246.0f) - 8.5f, 180.0f, 11.0f), juce::Justification::centredBottom);
         }
     }
@@ -1439,13 +1521,27 @@ void AmpireEditor::chooseFolder (bool lib)
 }
 
 void AmpireEditor::openPresetMenu (juce::Component* near) { content->presetMenu (near); }
+float AmpireEditor::getScreenGlow() const { return content->screenGlow; }
+float AmpireEditor::getLedGlow() const { return content->ledGlow; }
+void AmpireEditor::setScreenGlow (float v)
+{
+    content->screenGlow = v;
+    AmpireSettings::setGlowAttr (JucePlugin_Name, "screenGlow", v);
+    content->repaint();
+}
+void AmpireEditor::setLedGlow (float v)
+{
+    content->ledGlow = v;
+    AmpireSettings::setGlowAttr (JucePlugin_Name, "ledGlow", v);
+    content->rebuildLedImage();
+}
 void AmpireEditor::askPresetName() { content->askPresetNamePublic(); }
 
 void AmpireEditor::openColourPicker (juce::Component* near, int which)
 {
     const float s = (float) getWidth() / (float) kW;
-    const juce::Colour start = which == 1 ? content->meterMain : which == 2 ? content->meterSat : juce::Colour (proc.accentColour.load());
-    const char* title = which == 1 ? "Meter LED colour" : which == 2 ? "Saturation LED colour (top 3)" : "Ampire colour";
+    const juce::Colour start = which == 1 ? content->meterMain : which == 2 ? content->meterSat : which == 3 ? content->ledColour : juce::Colour (proc.accentColour.load());
+    const char* title = which == 1 ? "Meter LED colour" : which == 2 ? "Saturation LED colour (top 3)" : which == 3 ? "POWER LED colour" : "Screen text colour";
     auto picker = std::make_unique<WigaColourPicker> (title, start, juce::jlimit (0.85f, 1.6f, s), JucePlugin_Name);
     juce::Component::SafePointer<AmpireEditor> sp (this);
     auto apply = [sp, which] (juce::Colour c)
@@ -1453,6 +1549,7 @@ void AmpireEditor::openColourPicker (juce::Component* near, int which)
         if (sp == nullptr) return;
         if (which == 1) sp->content->meterMain = c;
         else if (which == 2) sp->content->meterSat = c;
+        else if (which == 3) { sp->content->ledColour = c; sp->content->rebuildLedImage(); }
         else sp->proc.accentColour = c.getARGB();
         sp->content->repaint();
     };
@@ -1461,14 +1558,17 @@ void AmpireEditor::openColourPicker (juce::Component* near, int which)
     {
         if (which == 1) AmpireSettings::setColourAttr (JucePlugin_Name, "meterColour", c.getARGB());
         else if (which == 2) AmpireSettings::setColourAttr (JucePlugin_Name, "saturationColour", c.getARGB());
+        else if (which == 3) AmpireSettings::setColourAttr (JucePlugin_Name, "ledColour", c.getARGB());
         else AmpireSettings::setAccent (JucePlugin_Name, c.getARGB());
     };
-    const juce::uint32 def = which == 1 ? AmpireSettings::kDefaultMeter : which == 2 ? AmpireSettings::kDefaultSaturation : AmpireSettings::kDefaultAccent;
+    const juce::uint32 def = which == 1 ? AmpireSettings::kDefaultMeter : which == 2 ? AmpireSettings::kDefaultSaturation
+                           : which == 3 ? AmpireSettings::kDefaultLed : AmpireSettings::kDefaultAccent;
     picker->onDefault = [apply, which, def]
     {
         apply (juce::Colour (def));
         if (which == 1) AmpireSettings::setColourAttr (JucePlugin_Name, "meterColour", def);
         else if (which == 2) AmpireSettings::setColourAttr (JucePlugin_Name, "saturationColour", def);
+        else if (which == 3) AmpireSettings::setColourAttr (JucePlugin_Name, "ledColour", def);
     };
     auto area = near != nullptr ? getLocalArea (near, near->getLocalBounds()) : getLocalBounds().withSizeKeepingCentre (10, 10);
     auto* layer = new WigaPickerLayer (std::move (picker), area, getLocalBounds());
@@ -1589,7 +1689,6 @@ static void showContextMenu (juce::Component& c, int learnIdx)
     if (learnIdx < 0)
     {
         m.addSeparator();
-        m.addItem (2, "Colour...");
         juce::PopupMenu midi;
         addMidiItems (midi, *p);
         m.addSubMenu ("MIDI", midi);
@@ -1653,9 +1752,20 @@ static void showGearMenu (juce::Component& c)
     m.addSubMenu ("Input channel", inM);
     m.addItem (38, "Tone stack (BASS / MIDDLE / TREBLE)", true, val ("tonestack") > 0.5f);
     m.addSeparator();
-    m.addItem (2, "Screen colour...");
-    m.addItem (70, "Meter LED colour...");
-    m.addItem (71, "Saturation LED colour (top 3)...");
+    {
+        auto* edp = c.findParentComponentOfClass<AmpireEditor>();
+        const float lg = edp != nullptr ? edp->getLedGlow() : 1.0f;
+        const char* glowNames[4] = { "Off", "Low", "Medium (design)", "High" };
+        const float glowVals[4] = { 0.0f, 0.5f, 1.0f, 1.6f };
+        juce::PopupMenu colM, lgM;
+        colM.addItem (76, "POWER LED colour...");
+        for (int i = 0; i < 4; ++i) lgM.addItem (77 + i, glowNames[i], true, std::abs (lg - glowVals[i]) < 0.01f);
+        colM.addSubMenu ("POWER LED glow", lgM);
+        colM.addSeparator();
+        colM.addItem (70, "Meter LED colour...");
+        colM.addItem (71, "Saturation LED colour (top 3)...");
+        m.addSubMenu ("Colours & glow", colM);
+    }
     {
         const auto root = p->library.getRoot();
         folderM.addSectionHeader (root.isDirectory() ? root.getFullPathName() : juce::String ("No library folder"));
@@ -1684,8 +1794,9 @@ static void showGearMenu (juce::Component& c)
         auto set = [p] (const char* id, float v) { if (auto* prm = p->apvts.getParameter (id)) prm->setValueNotifyingHost (prm->convertTo0to1 (v)); };
         auto flip = [p, &set] (const char* id) { set (id, p->apvts.getRawParameterValue (id)->load() > 0.5f ? 0.0f : 1.0f); };
         auto* ed = sp->findParentComponentOfClass<AmpireEditor>();
-        if (r == 2) { if (ed) ed->openColourPicker (sp.getComponent(), 0); }
-        else if (r == 70 || r == 71) { if (ed) ed->openColourPicker (sp.getComponent(), r == 70 ? 1 : 2); }
+        if (r == 70 || r == 71) { if (ed) ed->openColourPicker (sp.getComponent(), r == 70 ? 1 : 2); }
+        else if (r == 76) { if (ed) ed->openColourPicker (sp.getComponent(), 3); }
+        else if (r >= 77 && r <= 80) { const float v[4] = { 0.0f, 0.5f, 1.0f, 1.6f }; if (ed) ed->setLedGlow (v[r - 77]); }
         else if (r == 800) p->initPreset();
         else if (r == 801) { if (ed) ed->askPresetName(); }
         else if (r == 802) p->savePreset (p->getPresetName());
