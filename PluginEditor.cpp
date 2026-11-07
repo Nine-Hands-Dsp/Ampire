@@ -697,10 +697,7 @@ public:
         meterMain = juce::Colour (AmpireSettings::meterColour (JucePlugin_Name));
         meterSat  = juce::Colour (AmpireSettings::saturationColour (JucePlugin_Name));
         gear.proc = &proc;
-        gear.ghost = gear.round = true;                 // petit potard en haut a droite : menu des reglages et presets
-        addAndMakeVisible (gear);
-        gear.setBounds (toInt ({ kGear.x - kGearR, kGear.y - kGearR, kGearR * 2, kGearR * 2 }));
-        gear.onClick = [this] { showGearMenu (gear); };
+        // plus de bouton de reglages : le menu complet (reglages, presets, couleurs, MIDI, taille) s'ouvre au clic droit
 
         // ---- plaque : potards
         struct K { const char* id; int learn; const char* name; };
@@ -1138,8 +1135,7 @@ public:
         const auto p = e.position;
         if (e.mods.isPopupMenu())
         {
-            if (rRow[0].contains (p)) { slotMenu (0); return; }
-            showContextMenu (*this, -1);
+            showGearMenu (*this);
             return;
         }
         if (rLcd[0].contains (p)) { openLibrary (0); return; }
@@ -1679,6 +1675,11 @@ static bool handleLearnChoice (int r, AmpireProcessor* p)
 
 static void showContextMenu (juce::Component& c, int learnIdx)
 {
+    // un seul menu dans tout le plugin : clic droit n'importe ou = menu des reglages (MIDI Learn de chaque commande
+    // dans son sous-menu MIDI)
+    juce::ignoreUnused (learnIdx);
+    showGearMenu (c);
+    return;
     auto* p = procFor (&c);
     if (p == nullptr) return;
     juce::PopupMenu m;
@@ -1795,7 +1796,7 @@ static void showGearMenu (juce::Component& c)
     addSizeItems (sizeM, c);
     m.addSubMenu ("Plugin size", sizeM);
     juce::Component::SafePointer<juce::Component> sp (&c);
-    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&c), [sp, p, lows, highs, levels] (int r)
+    m.showMenuAsync (juce::PopupMenu::Options(), [sp, p, lows, highs, levels] (int r)
     {
         if (sp == nullptr) return;
         auto set = [p] (const char* id, float v) { if (auto* prm = p->apvts.getParameter (id)) prm->setValueNotifyingHost (prm->convertTo0to1 (v)); };

@@ -199,7 +199,6 @@ def RR(x0_, y0_, x1_, y1_, r_=0): d_.rounded_rectangle([x0_ * k, y0_ * k, x1_ * 
 def CC(cx_, cy_, r_): d_.ellipse([(cx_ - r_) * k, (cy_ - r_) * k, (cx_ + r_) * k, (cy_ + r_) * k], fill=255)
 RR(140, 110, 1695, 305, 14)
 for xb in (1707, 1791, 1874): RR(xb, 165, xb + 76, 241, 8)
-CC(1913, 75, 39)
 RR(46, 306, 137, 745, 12); RR(1861, 306, 1952, 745, 12)
 CC(1618.4, 531.0, 17)
 RR(1546, 340, 1556, 715, 3)
@@ -207,6 +206,7 @@ fgm = np.asarray(fgi) > 0
 panel = inner & ~fgm
 knobz = np.zeros((H, W), bool)
 for cx_, cy_ in KN: knobz |= np.hypot(xx / k - cx_, yy / k - cy_) < 82     # anciens potards + ombres (les points restent hors zone)
+knobz |= (np.hypot(xx / k - 1913, yy / k - 77) < 54) | (np.hypot(xx / k - 1921, yy / k - 88) < 62)   # petit potard en haut a droite + son ombre : supprimes
 Lc = out.mean(2)
 T = np.asarray(Image.open(os.path.join(DESIGN, "plate_texture.png")).convert("RGB").resize((W, W), Image.LANCZOS), dtype=np.float32)[:H] / 255.0
 so_ = (out.max(2) - out.min(2)) / np.maximum(out.max(2), 1e-3)
@@ -219,7 +219,9 @@ def nblur(v, m, s_):
 Ls = nblur(Lc, base_, 6.0)
 Mloc = nblur(Lc, base_, 60.0)
 S = np.clip(Ls / np.maximum(Mloc, 1e-3), 0.3, 1.0)          # ombres de contact seulement (aucun ancien reflet)
-S = np.where(knobz, 1.0, S)                                  # sous les anciens potards : texture seule
+_m = (panel & ~knobz).astype(np.float32); _den = nd.gaussian_filter(_m, 60.0)
+_fill = np.where(_den > 0.02, nd.gaussian_filter(S * _m, 60.0) / np.maximum(_den, 1e-4), 1.0)
+S = np.where(knobz, np.clip(_fill, 0.85, 1.0), S)          # sous les anciens potards : eclairage moyen de la plaque autour
 newp = np.clip(T * S[..., None], 0, 1)
 oldp = np.stack([nblur(out[..., c], base_, 3.0) for c in range(3)], -1)
 ink = np.array([0.86, 0.86, 0.85], np.float32)
@@ -302,7 +304,8 @@ def put_white(m, x0_, y0_, alpha=0.95):
     a_ = (m * alpha)[..., None]
     out[y0_:y0_ + h_, x0_:x0_ + w_] = reg * (1 - a_) + np.array([0.97, 0.97, 0.96]) * a_
 nh = svg_alpha("NineHands_Logo_White.svg", 30 * 0.65 * k)          # NINE HANDS | DSP : 35 % plus petit qu'a l'origine
-put_white(nh, int(1830 * k) - nh.shape[1], int((73 - 30 * 0.65 / 2) * k))
+put_white(nh, int(1950 * k) - nh.shape[1],                          # bord droit aligne sur celui des boutons
+          int((73 - 30 * 0.65 / 2) * k))
 amp = svg_alpha("Ampire_Logo_v003_White.svg", 62 * k)
 put_white(amp, int(168 * k), int(688 * k))
 
