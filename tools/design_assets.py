@@ -219,6 +219,11 @@ def nblur(v, m, s_):
 Ls = nblur(Lc, base_, 6.0)
 Mloc = nblur(Lc, base_, 60.0)
 S = np.clip(Ls / np.maximum(Mloc, 1e-3), 0.3, 1.0)          # ombres de contact seulement (aucun ancien reflet)
+# autour des potards : plus aucune ombre de l'ancienne maquette (les nouveaux potards ont la leur, centree, ajoutee en 6d)
+_kzm = np.zeros((H, W), bool)
+for cx_, cy_ in KN: _kzm |= np.hypot(xx / k - cx_, (yy / k - cy_ - 18) / 1.08) < 140   # ancienne ombre portee (vers le bas)
+_kz = nd.gaussian_filter(_kzm.astype(np.float32), 10 * k)
+S = S * (1 - _kz) + _kz
 _m = (panel & ~knobz).astype(np.float32); _den = nd.gaussian_filter(_m, 60.0)
 _fill = np.where(_den > 0.02, nd.gaussian_filter(S * _m, 60.0) / np.maximum(_den, 1e-4), 1.0)
 S = np.where(knobz, np.clip(_fill, 0.85, 1.0), S)          # sous les anciens potards : eclairage moyen de la plaque autour
@@ -283,7 +288,7 @@ for cx_, cy_ in KN:
     x0_ = int(round(cx_ * k - KC[0] * sc_)); y0_ = int(round(cy_ * k - KC[1] * sc_))
     pad = int(20 * k)
     A_ = np.zeros((kh + 2 * pad, kw + 2 * pad), np.float32); A_[pad:pad + kh, pad:pad + kw] = kk[..., 3]
-    shadow = nd.shift(nd.gaussian_filter(A_, 6 * k), (6 * k, 3.5 * k), order=1) * 0.70
+    shadow = nd.shift(nd.gaussian_filter(A_, 5 * k), (4 * k, 0), order=1) * 0.65     # ombre portee centree sous le potard (lumiere au-dessus)
     contact = nd.gaussian_filter(A_, 1.8 * k) * 0.45
     sh_ = np.clip(np.maximum(shadow, contact), 0, 1)
     reg = out[y0_ - pad:y0_ + kh + pad, x0_ - pad:x0_ + kw + pad]
