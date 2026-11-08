@@ -144,6 +144,7 @@ private:
         std::shared_ptr<CaptureData> data;
         SlotInfo info;
         juce::uint32 gen = 0;                              // generation : une construction perimee n'est pas publiee
+        juce::uint32 loadGen = 0;                          // generation des chargements de fichier (seule une nouvelle capture l'annule)
         juce::String embeddedText;                         // copie gzip+base64 du .nam (projets / presets)
     };
 

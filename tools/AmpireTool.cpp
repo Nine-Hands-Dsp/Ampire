@@ -60,6 +60,31 @@ int main (int argc, char** argv)
         return 0;
     }
 
+    if (mode == "reopen")       // AmpireTool reopen <nam> : reouverture de projet (setState puis prepareToPlay aussitot)
+    {
+        juce::MemoryBlock state;
+        {
+            AmpireProcessor a;
+            a.prepareToPlay (48000.0, 256);
+            a.loadCaptureNow (0, juce::File (arg (2)));
+            a.getStateInformation (state);
+        }
+        AmpireProcessor b;
+        const auto t0 = juce::Time::getMillisecondCounterHiRes();
+        b.setStateInformation (state.getData(), (int) state.getSize());
+        b.prepareToPlay (44100.0, 512);                      // comme Reaper a l'ouverture : juste apres le setState
+        while (juce::Time::getMillisecondCounterHiRes() - t0 < 15000)
+        {
+            const auto si = b.getSlotInfo (0);
+            if (si.loaded && ! si.loading) break;
+            juce::Thread::sleep (10);
+        }
+        const auto si = b.getSlotInfo (0);
+        std::printf ("reopen: loaded=%d loading=%d err=%s  %.0f ms\n", (int) si.loaded, (int) si.loading, si.error.toRawUTF8(),
+                     juce::Time::getMillisecondCounterHiRes() - t0);
+        return si.loaded && ! si.loading ? 0 : 4;
+    }
+
     if (mode == "process" || mode == "bench")
     {
         const bool bench = mode == "bench";

@@ -654,7 +654,8 @@ void AmpireProcessor::loadCapture (int s, const juce::File& file)
     juce::uint32 gen;
     {
         const juce::ScopedLock sl (engineLock);
-        gen = ++slots[s].gen;
+        ++slots[s].gen;
+        gen = ++slots[s].loadGen;
         slots[s].info.loading = true;
         slots[s].info.error.clear();
     }
@@ -670,7 +671,7 @@ bool AmpireProcessor::loadCaptureNow (int s, const juce::File& file)
 {
     if (s < 0 || s >= numSlots) return false;
     juce::uint32 gen;
-    { const juce::ScopedLock sl (engineLock); gen = ++slots[s].gen; }
+    { const juce::ScopedLock sl (engineLock); ++slots[s].gen; gen = ++slots[s].loadGen; }
     doLoad (s, file, gen);
     return getSlotInfo (s).loaded;
 }
@@ -683,7 +684,7 @@ void AmpireProcessor::doLoad (int s, const juce::File& file, juce::uint32 gen)
     {
         {
             const juce::ScopedLock sl (engineLock);
-            if (gen != slots[s].gen) return;
+            if (gen != slots[s].loadGen) return;
             slots[s].info.loading = false;
             slots[s].info.error = err;
         }
@@ -693,7 +694,9 @@ void AmpireProcessor::doLoad (int s, const juce::File& file, juce::uint32 gen)
     const auto packed = file.getSize() <= kMaxEmbedBytes ? packFile (file) : juce::String();
     {
         const juce::ScopedLock sl (engineLock);
-        if (gen != slots[s].gen) return;               // une autre capture a ete demandee entre-temps
+        if (gen != slots[s].loadGen) return;           // une autre capture a ete demandee entre-temps
+        // (une reconstruction demandee pendant le chargement - prepareToPlay, anti-repliement - n'annule plus le chargement :
+        //  avant, l'ouverture d'un projet pouvait laisser la capture bloquee sur LOADING...)
         slots[s].data = data;
         slots[s].embeddedText = packed;
         slots[s].info.meta = data->meta;
@@ -706,7 +709,9 @@ void AmpireProcessor::doLoad (int s, const juce::File& file, juce::uint32 gen)
     }
     library.addRecent (file.getFullPathName());
     infoVersion++;
-    doBuild (s, gen);
+    juce::uint32 bgen;
+    { const juce::ScopedLock sl (engineLock); bgen = ++slots[s].gen; }
+    doBuild (s, bgen);
 }
 
 void AmpireProcessor::requestBuild (int s)
@@ -760,6 +765,7 @@ void AmpireProcessor::clearCapture (int s)
     {
         const juce::ScopedLock sl (engineLock);
         ++slots[s].gen;
+        ++slots[s].loadGen;
         slots[s].data.reset();
         slots[s].embeddedText.clear();
         slots[s].info = SlotInfo();
