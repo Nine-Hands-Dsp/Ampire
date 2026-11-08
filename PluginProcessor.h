@@ -29,10 +29,22 @@ struct SlotInfo
     int osFactor = 1;            // facteur reellement utilise (LSTM : 1)
 };
 
+class NhdReaperHost;
+struct NhdStackApi;
+
 class AmpireProcessor : public juce::AudioProcessor,
+                        public juce::VST3ClientExtensions,
                         private juce::Timer
 {
 public:
+    // ---- mode « stack » (NhdStack.h) : dans REAPER, l'Impulse de la meme piste s'affiche colle sous Ampire
+    juce::VST3ClientExtensions* getVST3ClientExtensions() override { return this; }
+    void setIHostApplication (Steinberg::FUnknown*) override;
+    bool isReaper() const;
+    void* reaperTrack() const;                 // MediaTrack* (nullptr hors REAPER)
+    const NhdStackApi* stackApi() const;       // table publiee par Impulse (nullptr si aucun Impulse charge)
+    std::atomic<bool> stackOn { false };       // sauvegarde avec le projet
+
     AmpireProcessor();
     ~AmpireProcessor() override;
 
@@ -107,6 +119,7 @@ public:
     // ---------------------------------------------------------------- interface
     std::atomic<juce::uint32> accentColour { 0xffe9e7e1 };
     std::atomic<int> uiScaleIdx { -1 };
+    std::unique_ptr<NhdReaperHost> reaperHost;
     std::atomic<float> meterIn { 0.0f }, meterOut { 0.0f }, cpuLoad { 0.0f };
     std::atomic<bool> clipIn { false }, clipOut { false };
     double getHostRate() const { return hostRate; }

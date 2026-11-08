@@ -29,12 +29,24 @@ public:
     void openLibrary (int slot);         // outil : ouvre la bibliotheque
     void showStatus (const juce::String& msg);   // message temporaire dans l'ecran
 
+    // mode « stack » : l'Impulse de la meme piste REAPER colle sous Ampire (NhdStack.h)
+    void toggleStack();
+    void updateStack();                  // appele 2 fois par seconde : Impulse present ? vue toujours valide ?
+    void previewStackButton (bool available, bool on);   // outil : apparence du bouton
+
 private:
     friend class AmpireContent;
     void useSoftwareRenderer();
     void checkRenderer();
     void resetRenderer();
     void* lastPeer = nullptr;
+    int stackInst = 0, stackView = 0;    // numeros donnes par Impulse (jamais des pointeurs)
+    bool stackShown = false, stackPreview = false;
+    void applyStack();
+    void placeStackView();
+    void setStackConstraints (bool stacked);
+    int ampireHeight (int w) const;
+    int impulseHeight (int w) const;
     juce::uint32 lastRendererCheck = 0;
     AmpireProcessor& proc;
     std::unique_ptr<AmpireContent> content;

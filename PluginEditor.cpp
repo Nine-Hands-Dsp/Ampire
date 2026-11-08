@@ -1,4 +1,5 @@
 #include "PluginEditor.h"
+#include "NhdStack.h"
 #include <BinaryData.h>
 #include "WigaWindowSize.h"
 #include "ColourPicker.h"
@@ -75,6 +76,9 @@ namespace
     const juce::Point<float> kJewel (D (1618.4f), D (531.0f));             // voyant et inverseur sur l'axe des potards
     const juce::Rectangle<float> rLedSprite = R (1570, 482.5f, 1667, 579.5f);
     const juce::Point<float> kToggle (D (1721.0f), D (531.0f));
+    // mode « stack » : bouton IMPULSE sous POWER ; proportions de la partie visible d'Impulse (repere 1876 x 782)
+    const juce::Rectangle<float> rStackBtn = R (1593, 672, 1829, 731);
+    constexpr float kImpulseAspect = (1876.0f - 2.0f * 16.1f) / (782.0f - 13.2f - 33.0f);
     const float kToggleSprite = D (170.0f);
     const juce::Point<float> kGear (D (1913.0f), D (75.0f));
     const float kGearR = D (39.0f);
@@ -685,6 +689,66 @@ private:
 };
 
 // ============================================================================ contenu de la fenetre
+// ---- bouton IMPULSE (mode stack) : facon boutons d'Ampire, icone de deux modules empiles, voyant de la couleur du POWER
+class StackBtn : public juce::Component
+{
+public:
+    std::function<void()> onClick;
+    bool available = false, on = false;
+    juce::Colour led { 0xffffa040 };
+    void paint (juce::Graphics& g) override
+    {
+        const auto r = getLocalBounds().toFloat();
+        const float u = r.getHeight() / 22.5f, rad = 3.2f * u;
+        for (int i = 5; i >= 1; --i)
+        {
+            g.setColour (juce::Colours::black.withAlpha (0.10f));
+            g.fillRoundedRectangle (r.translated (0, (float) i * 0.45f * u).expanded (0.15f * (float) i * u, 0), rad);
+        }
+        g.setColour (juce::Colour (0xff030303));
+        g.fillRoundedRectangle (r, rad);
+        const bool down = pressed || on;
+        auto f = r.reduced (1.5f * u).translated (0, pressed ? 0.4f * u : 0.0f);
+        const float lift = isMouseOver() && available && ! pressed ? 0.06f : 0.0f;
+        g.setColour (juce::Colour (down ? 0xff1c1c1c : 0xff242424).brighter (lift));
+        g.fillRoundedRectangle (f, rad - 1.0f * u);
+        g.setColour (juce::Colours::white.withAlpha (down ? 0.30f : 0.78f));
+        g.fillRect (f.getX() + 2.0f * u, f.getY() + 0.3f * u, f.getWidth() - 4.0f * u, 0.8f * u);
+        const juce::Colour ink = juce::Colour (0xffe8e8e6).withAlpha (available ? 1.0f : 0.35f);
+        // icone : deux modules empiles (celui du bas plein)
+        const float ix = f.getX() + 8.0f * u, iy = f.getCentreY();
+        g.setColour (ink);
+        g.drawRoundedRectangle (ix, iy - 5.5f * u, 12.0f * u, 4.0f * u, 1.0f * u, 1.0f * u);
+        g.fillRoundedRectangle (ix, iy + 1.0f * u, 12.0f * u, 4.0f * u, 1.0f * u);
+        g.setFont (fSemi (8.6f * u));
+        g.drawText ("IMPULSE", juce::Rectangle<float> (ix + 16.0f * u, f.getY(), 48.0f * u, f.getHeight()), juce::Justification::centredLeft);
+        // voyant
+        const juce::Point<float> c (f.getRight() - 8.5f * u, f.getCentreY());
+        const float lr = 2.0f * u;
+        if (on && available)
+        {
+            for (int i = 6; i >= 1; --i)
+            {
+                g.setColour (led.withAlpha (0.06f * (float) (7 - i)));
+                g.fillEllipse (c.x - lr - (float) i * 0.7f * u, c.y - lr - (float) i * 0.7f * u, 2.0f * (lr + (float) i * 0.7f * u), 2.0f * (lr + (float) i * 0.7f * u));
+            }
+            g.setColour (led);
+        }
+        else g.setColour (juce::Colour (0xff2a2320));
+        g.fillEllipse (c.x - lr, c.y - lr, lr * 2.0f, lr * 2.0f);
+    }
+    void mouseDown (const juce::MouseEvent& e) override { if (! e.mods.isPopupMenu()) { pressed = true; repaint(); } }
+    void mouseUp (const juce::MouseEvent& e) override
+    {
+        const bool was = pressed; pressed = false; repaint();
+        if (was && getLocalBounds().contains (e.getPosition()) && onClick) onClick();
+    }
+    void mouseEnter (const juce::MouseEvent&) override { repaint(); }
+    void mouseExit (const juce::MouseEvent&) override { repaint(); }
+private:
+    bool pressed = false;
+};
+
 class AmpireContent : public juce::Component,
                       public juce::FileDragAndDropTarget,
                       private juce::Timer
@@ -758,6 +822,11 @@ public:
             sl.prev->onClick = [this] { proc.stepCapture (0, -1); };
             sl.next->onClick = [this] { proc.stepCapture (0, +1); };
         }
+
+        // ---- mode stack : bouton IMPULSE sous POWER
+        addAndMakeVisible (stackBtn);
+        stackBtn.setBounds (toInt (rStackBtn));
+        stackBtn.onClick = [this] { if (auto* ed = findParentComponentOfClass<AmpireEditor>()) ed->toggleStack(); };
 
         addChildComponent (library);
         library.setBounds (toInt ({ 12, 48, 736, (float) kH - 60 }));
@@ -1369,6 +1438,7 @@ private:
         {
             ed->checkRenderer();
             updateBackgroundCache (*ed, now);
+            if (++stackTick >= 15) { stackTick = 0; ed->updateStack(); }   // Impulse sur la piste ? (2 fois par seconde)
             if (repaintAskedMs != 0 && now - repaintAskedMs > 1500 && isShowing())
             {
                 repaintAskedMs = 0;
@@ -1456,6 +1526,10 @@ private:
     std::unique_ptr<Knob> knobs[6];
     SlotUI slot[1];
     LibraryPanel library;
+public:
+    StackBtn stackBtn;
+private:
+    int stackTick = 0;
     std::unique_ptr<juce::FileChooser> chooser;
     SlotInfo info[1];
     juce::uint32 errUntil[1] {};
@@ -1496,7 +1570,12 @@ AmpireEditor::AmpireEditor (AmpireProcessor& p) : AudioProcessorEditor (&p), pro
     else            applyScaleIndex (WigaWindowSize::defaultIndex (JucePlugin_Name, numSizes));
 }
 
-AmpireEditor::~AmpireEditor() = default;
+AmpireEditor::~AmpireEditor()
+{
+    if (stackView != 0)
+        if (auto* api = proc.stackApi()) api->destroyView (stackView);
+    stackView = 0;
+}
 
 void AmpireEditor::useSoftwareRenderer()
 {
@@ -1609,6 +1688,97 @@ void AmpireEditor::resized()
     content->setTransform (juce::AffineTransform::translation (-kVisX, -kVisY).scaled (s));
     content->setBounds (0, 0, kW, kH);
     content->editorResized();            // jamais de setSize ici (boucle avec l'hote a 125 / 150 %)
+    placeStackView();
+}
+
+// ============================================================================ mode « stack » (NhdStack.h)
+int AmpireEditor::ampireHeight (int w) const { return (int) std::lround ((double) w * kVisH / kVisW); }
+int AmpireEditor::impulseHeight (int w) const { return (int) std::lround ((double) w / kImpulseAspect); }
+
+void AmpireEditor::setStackConstraints (bool stacked)
+{
+    const double aspect = stacked ? (double) kVisW / ((double) kVisH + (double) kVisW / kImpulseAspect) : (double) kVisW / (double) kVisH;
+    const int minH = stacked ? kWinH + impulseHeight (kWin) : kWinH;
+    setResizeLimits (kWin, minH, (int) std::lround (kWin * 2.2f), (int) std::lround (minH * 2.2f));
+    getConstrainer()->setFixedAspectRatio (aspect);
+}
+
+void AmpireEditor::placeStackView()
+{
+    if (stackView == 0) return;
+    if (auto* api = proc.stackApi())
+    {
+        const int w = getWidth(), hA = ampireHeight (w);
+        api->setViewBounds (stackView, 0, hA, w, juce::jmax (1, getHeight() - hA),
+                            (double) juce::Component::getApproximateScaleFactorForComponent (this));
+    }
+}
+
+void AmpireEditor::toggleStack()
+{
+    if (! proc.isReaper()) { content->showStatus ("IMPULSE STACK   REAPER only"); return; }
+    if (stackInst == 0) updateStack();
+    if (stackInst == 0) { content->showStatus ("IMPULSE STACK   load Impulse on this track"); return; }
+    proc.stackOn = ! proc.stackOn.load();
+    applyStack();
+    content->showStatus (proc.stackOn ? "IMPULSE STACK   ON" : "IMPULSE STACK   OFF");
+}
+
+void AmpireEditor::updateStack()
+{
+    if (stackPreview) return;
+    auto* api = proc.stackApi();
+    void* track = proc.reaperTrack();
+    const int inst = api != nullptr && track != nullptr ? api->findOnTrack (track) : 0;
+    // vue perimee (Impulse retire, autre Impulse, module decharge) : on la lache
+    if (stackView != 0 && (api == nullptr || api->viewAlive (stackView) == 0 || inst != stackInst))
+    {
+        if (api != nullptr && api->viewAlive (stackView) != 0) api->destroyView (stackView);
+        stackView = 0;
+    }
+    stackInst = inst;
+    applyStack();
+}
+
+void AmpireEditor::applyStack()
+{
+    auto& b = content->stackBtn;
+    const bool avail = stackInst != 0;
+    const bool want = avail && proc.stackOn.load() && getWindowHandle() != nullptr;
+    if (b.available != avail || b.on != proc.stackOn.load() || b.led != content->ledColour)
+    {
+        b.available = avail; b.on = proc.stackOn.load(); b.led = content->ledColour;
+        b.repaint();
+    }
+    const int w = getWidth();
+    if (want && stackView == 0)
+    {
+        auto* api = proc.stackApi();
+        if (api == nullptr) return;
+        stackShown = true;
+        setStackConstraints (true);
+        setSize (w, ampireHeight (w) + impulseHeight (w));
+        stackView = api->createView (stackInst, getWindowHandle(), 0, ampireHeight (w), w, impulseHeight (w),
+                                     (double) juce::Component::getApproximateScaleFactorForComponent (this));
+        if (stackView == 0) { stackShown = false; setStackConstraints (false); setSize (w, ampireHeight (w)); }
+        else placeStackView();
+    }
+    else if (! want && stackShown)
+    {
+        if (stackView != 0)
+            if (auto* api = proc.stackApi()) api->destroyView (stackView);
+        stackView = 0;
+        stackShown = false;
+        setStackConstraints (false);
+        setSize (w, ampireHeight (w));
+    }
+}
+
+void AmpireEditor::previewStackButton (bool available, bool on)
+{
+    stackPreview = true;
+    content->stackBtn.available = available; content->stackBtn.on = on; content->stackBtn.led = content->ledColour;
+    content->stackBtn.repaint();
 }
 
 int AmpireEditor::getScaleIndex() const
@@ -1629,7 +1799,7 @@ void AmpireEditor::applyScaleIndex (int idx)
 {
     idx = juce::jlimit (0, numSizes - 1, idx);
     const int w = (int) std::lround (kWin * kScales[idx]);
-    setSize (w, (int) std::lround ((double) w * kVisH / kVisW));
+    setSize (w, ampireHeight (w) + (stackShown ? impulseHeight (w) : 0));
 }
 
 // ============================================================================ menus clic droit

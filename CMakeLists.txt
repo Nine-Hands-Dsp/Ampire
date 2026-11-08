@@ -93,6 +93,10 @@ target_sources(Ampire PRIVATE
   NamEngine.cpp
   CaptureLibrary.cpp)
 
+# mode stack (NhdStack.h) : interface VST3 de REAPER (funknown.h du SDK VST3 fourni avec JUCE)
+target_include_directories(Ampire PRIVATE
+  ${JUCE_SOURCE_DIR}/modules/juce_audio_processors_headless/format_types/VST3_SDK)
+
 target_compile_definitions(Ampire PUBLIC
   JUCE_WEB_BROWSER=0
   JUCE_USE_CURL=0

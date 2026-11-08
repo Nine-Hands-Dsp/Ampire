@@ -1,4 +1,5 @@
 #include "PluginProcessor.h"
+#include "NhdStack.h"
 #include "PluginEditor.h"
 #include "ColourPicker.h"
 
@@ -918,6 +919,7 @@ void AmpireProcessor::getStateInformation (juce::MemoryBlock& dest)
     xml->setAttribute ("preset", presetName);
     xml->setAttribute ("snap", presetSnapshot);
     xml->setAttribute ("uiScale", uiScaleIdx.load());
+    xml->setAttribute ("stack", stackOn.load() ? 1 : 0);
     xml->setAttribute ("accent", juce::String::toHexString ((juce::int64) accentColour.load()));
     xml->setAttribute ("lastFolder", lastFolder.getFullPathName());
     copyXmlToBinary (*xml, dest);
@@ -931,6 +933,7 @@ void AmpireProcessor::setStateInformation (const void* data, int size)
     presetName = xml->getStringAttribute ("preset");
     presetSnapshot = xml->hasAttribute ("snap") ? xml->getStringAttribute ("snap") : snapshotString();
     uiScaleIdx = juce::jlimit (-1, 2, xml->getIntAttribute ("uiScale", -1));
+    stackOn = xml->getIntAttribute ("stack", 0) != 0;
     if (xml->hasAttribute ("accent")) accentColour = 0xff000000u | (juce::uint32) xml->getStringAttribute ("accent").getHexValue64();
     const juce::File lf (xml->getStringAttribute ("lastFolder"));
     if (lf.isDirectory()) lastFolder = lf;
@@ -1018,3 +1021,27 @@ void AmpireProcessor::initPreset()
 juce::AudioProcessorEditor* AmpireProcessor::createEditor() { return new AmpireEditor (*this); }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new AmpireProcessor(); }
+
+// ============================================================================ mode « stack » (NhdStack.h)
+void AmpireProcessor::setIHostApplication (Steinberg::FUnknown* app)
+{
+    if (reaperHost == nullptr) reaperHost = std::make_unique<NhdReaperHost>();
+    reaperHost->attach (app);
+}
+
+bool AmpireProcessor::isReaper() const { return reaperHost != nullptr && reaperHost->isReaper(); }
+
+void* AmpireProcessor::reaperTrack() const
+{
+    return isReaper() && reaperHost->take() == nullptr ? reaperHost->track() : nullptr;
+}
+
+const NhdStackApi* AmpireProcessor::stackApi() const
+{
+    if (! isReaper()) return nullptr;
+    using GetApiFn = void* (*) (const char*);
+    auto getApi = reinterpret_cast<GetApiFn> (reaperHost->api ("plugin_getapi"));
+    if (getApi == nullptr) return nullptr;
+    auto* t = static_cast<const NhdStackApi*> (getApi (NHD_STACK_API_NAME));   // relu a chaque fois (Impulse peut etre decharge)
+    return t != nullptr && t->version >= 1 ? t : nullptr;
+}

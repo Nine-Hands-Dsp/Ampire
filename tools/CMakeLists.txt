@@ -6,7 +6,7 @@ target_sources(AmpireTool PRIVATE
   ../PluginEditor.cpp
   ../NamEngine.cpp
   ../CaptureLibrary.cpp)
-target_include_directories(AmpireTool PRIVATE ..)
+target_include_directories(AmpireTool PRIVATE .. ${JUCE_SOURCE_DIR}/modules/juce_audio_processors_headless/format_types/VST3_SDK)
 target_compile_definitions(AmpireTool PRIVATE
   JucePlugin_Name="Ampire"
   JucePlugin_VersionString="${PROJECT_VERSION}"
