@@ -14,6 +14,10 @@
 namespace
 {
     constexpr int kW = 760, kH = 317;
+    // partie visible : le boitier seul, sans le fond perdu (marge noire du fond : 22 / 22 / 18 / 45 px sur 2560)
+    constexpr float kVisX = 22.0f * 760.0f / 2560.0f, kVisY = 18.0f * 760.0f / 2560.0f;
+    constexpr float kVisW = 760.0f - 2.0f * kVisX, kVisH = 317.0f - kVisY - 45.0f * 760.0f / 2560.0f;
+    constexpr int kWin = 747, kWinH = 298;      // fenetre « 60 % » (meme largeur qu'Impulse)
     const float kScales[3] = { 1.0f, 1.25f, 5.0f / 3.0f };   // 60 % (defaut) / 75 % / 100 %
 
     namespace col
@@ -1341,7 +1345,7 @@ private:
         }
         if (resizeSettle > 0 && --resizeSettle == 0)
         {
-            const float px = (float) ed.getWidth() / (float) kW * displayScale;
+            const float px = (float) ed.getWidth() / kVisW * displayScale;
             const int tw = juce::jlimit (64, kW * 4, (int) std::lround (kW * px));
             const int th = juce::jlimit (32, kH * 4, (int) std::lround (kH * px));
             if (! bgCache.isValid() || bgCache.getWidth() != tw || bgCache.getHeight() != th)
@@ -1485,8 +1489,8 @@ AmpireEditor::AmpireEditor (AmpireProcessor& p) : AudioProcessorEditor (&p), pro
     addAndMakeVisible (*content);
     setResizable (true, true);
     // jamais plus petit que la taille par defaut (« 60 % »)
-    setResizeLimits (kW, kH, (int) std::lround (kW * 2.2f), (int) std::lround (kH * 2.2f));
-    getConstrainer()->setFixedAspectRatio ((double) kW / (double) kH);
+    setResizeLimits (kWin, kWinH, (int) std::lround (kWin * 2.2f), (int) std::lround (kWinH * 2.2f));
+    getConstrainer()->setFixedAspectRatio ((double) kVisW / (double) kVisH);
     const int saved = juce::jlimit (-1, 2, proc.uiScaleIdx.load());
     if (saved >= 0) setScaleIndex (saved);
     else            applyScaleIndex (WigaWindowSize::defaultIndex (JucePlugin_Name, numSizes));
@@ -1560,7 +1564,7 @@ void AmpireEditor::askPresetName() { content->askPresetNamePublic(); }
 
 void AmpireEditor::openColourPicker (juce::Component* near, int which)
 {
-    const float s = (float) getWidth() / (float) kW;
+    const float s = (float) getWidth() / (float) kWin;
     const juce::Colour start = which == 1 ? content->meterMain : which == 2 ? content->meterSat : which == 3 ? content->ledColour : juce::Colour (proc.accentColour.load());
     const char* title = which == 1 ? "Meter LED colour" : which == 2 ? "Saturation LED colour (top 3)" : which == 3 ? "POWER LED colour" : "Screen text colour";
     auto picker = std::make_unique<WigaColourPicker> (title, start, juce::jlimit (0.85f, 1.6f, s), JucePlugin_Name);
@@ -1601,15 +1605,15 @@ void AmpireEditor::visibilityChanged() { useSoftwareRenderer(); if (isShowing())
 
 void AmpireEditor::resized()
 {
-    const float s = (float) getWidth() / (float) kW;
-    content->setTransform (juce::AffineTransform::scale (s));
+    const float s = (float) getWidth() / kVisW;
+    content->setTransform (juce::AffineTransform::translation (-kVisX, -kVisY).scaled (s));
     content->setBounds (0, 0, kW, kH);
     content->editorResized();            // jamais de setSize ici (boucle avec l'hote a 125 / 150 %)
 }
 
 int AmpireEditor::getScaleIndex() const
 {
-    const float s = (float) getWidth() / (float) kW;
+    const float s = (float) getWidth() / (float) kWin;
     for (int i = 0; i < numSizes; ++i) if (std::abs (s - kScales[i]) < 0.02f) return i;
     return -1;
 }
@@ -1624,8 +1628,8 @@ void AmpireEditor::setScaleIndex (int idx)
 void AmpireEditor::applyScaleIndex (int idx)
 {
     idx = juce::jlimit (0, numSizes - 1, idx);
-    const int w = (int) std::lround (kW * kScales[idx]);
-    setSize (w, (int) std::lround ((double) w * kH / kW));
+    const int w = (int) std::lround (kWin * kScales[idx]);
+    setSize (w, (int) std::lround ((double) w * kVisH / kVisW));
 }
 
 // ============================================================================ menus clic droit
