@@ -303,9 +303,11 @@ def put_white(m, x0_, y0_, alpha=0.95):
     reg = out[y0_:y0_ + h_, x0_:x0_ + w_]
     a_ = (m * alpha)[..., None]
     out[y0_:y0_ + h_, x0_:x0_ + w_] = reg * (1 - a_) + np.array([0.97, 0.97, 0.96]) * a_
-nh = svg_alpha("NineHands_Logo_White.svg", 30 * 0.65 * k)          # NINE HANDS | DSP : 35 % plus petit qu'a l'origine
-put_white(nh, int(1950 * k) - nh.shape[1],                          # bord droit aligne sur celui des boutons
-          int((73 - 30 * 0.65 / 2) * k))
+# NINE HANDS | DSP : exactement la largeur de la rangee de boutons (1707 a 1950), meme centre vertical qu'avant
+_nh0 = svg_alpha("NineHands_Logo_White.svg", 100)
+_nh_h = (1950 - 1707) * k * _nh0.shape[0] / _nh0.shape[1]
+nh = svg_alpha("NineHands_Logo_White.svg", _nh_h)
+put_white(nh, int(round(1707 * k)), int(round(73 * k - _nh_h / 2)))
 amp = svg_alpha("Ampire_Logo_v003_White.svg", 62 * k)
 put_white(amp, int(168 * k), int(688 * k))
 
