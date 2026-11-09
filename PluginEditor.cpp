@@ -76,8 +76,8 @@ namespace
     const juce::Point<float> kSwStack (D (2954.0f), D (1029.71f)), kSwPower (D (3174.0f), D (1029.71f));
     const float kToggleSprite = D (252.0f);
     juce::Rectangle<float> diodeRect (juce::Point<float> c) { return { c.x - kDiodeSprite * 0.5f, c.y - kDiodeSprite * 0.5f, kDiodeSprite, kDiodeSprite }; }
-    // proportions de la partie visible d'Impulse (repere 1876 x 782) pour le mode stack
-    constexpr float kImpulseAspect = (1876.0f - 2.0f * 16.1f) / (782.0f - 13.2f - 33.0f);
+    // proportions d'Impulse v1.5 (design v005, repere 3600 x 1440, 2,5 : 1) pour le mode stack
+    constexpr float kImpulseAspect = 3600.0f / 1440.0f;
     // ecran : infos de la capture a gauche (alignees sur le bord droit de la fenetre IN), etat a droite du filet
     // (filet dans l'axe du potard OUTPUT)
     const juce::Rectangle<float> rLcd[1] = { R (58, 212, 3080, 537) };
@@ -1719,6 +1719,9 @@ void AmpireEditor::setStackConstraints (bool stacked)
     const int minH = stacked ? kWinH + impulseHeight (kWin) : kWinH;
     setResizeLimits (kWin, minH, (int) std::lround (kWin * 2.2f), (int) std::lround (minH * 2.2f));
     getConstrainer()->setFixedAspectRatio (aspect);
+    // pas de poignee d'agrandissement en mode stack (elle tomberait entre Ampire et Impulse) ;
+    // la fenetre reste redimensionnable par ses bords et par Plugin size
+    setResizable (true, ! stacked);
 }
 
 void AmpireEditor::placeStackView()
