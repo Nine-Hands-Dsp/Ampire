@@ -63,9 +63,13 @@ juce_add_binary_data(AmpireAssets SOURCES
   assets/Inter-Bold.otf
   assets/Inter-Medium.otf
   assets/bg.png
-  assets/led_on.png
-  assets/toggle_up.png
-  assets/toggle_down.png)
+  assets/knob_crown.png
+  assets/knob_reflect.png
+  assets/knob_indicator.png
+  assets/switch_up.png
+  assets/switch_down.png
+  assets/diode_on.png
+  assets/diode_off.png)
 
 if(APPLE)
   set(AMPIRE_FORMATS VST3 AU)

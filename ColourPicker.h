@@ -47,7 +47,7 @@ namespace AmpireSettings
         x->setAttribute (name, juce::String::toHexString ((juce::int64) c));
         save (plugin, *x);
     }
-    constexpr juce::uint32 kDefaultLed = 0xffff8a1e;          // voyant POWER (orange de la maquette)
+    constexpr juce::uint32 kDefaultLed = 0xffff2a14;          // diodes POWER / STACK (diode rouge fournie)
     inline juce::uint32 ledColour (const juce::String& plugin) { return colourAttr (plugin, "ledColour", kDefaultLed); }
     // intensite du halo (0 = aucun, 1 = maquette) : voyant POWER et textes de l'ecran
     inline float glowAttr (const juce::String& plugin, const char* name, float def)

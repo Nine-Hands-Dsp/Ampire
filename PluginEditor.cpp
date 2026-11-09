@@ -6,19 +6,18 @@
 #include <complex>
 
 // ============================================================================
-// AMPIRE - interface d'apres la maquette photographique de l'utilisateur (assets/design/ampire_design.png).
-// Le fond (assets/bg.png, calcule par tools/design_assets.py) porte tout ce qui est fixe ; le plugin dessine
-// par-dessus ce qui bouge : repere et valeur des potards, ecran de la capture, vu-metres a LEDs (48 LEDs,
-// memoire de crete, reflet dans le verre), voyant et inverseur POWER.
-// Repere logique 760 x 317 points (taille « 60 % ») ; anti-gel v2 (fond mis en cache par le timer).
+// AMPIRE - facade v005 (Ampire_Design_Mockup_v005.svg, repere 3600 x 1440). Le fond (assets/bg.png, calcule par
+// tools/design_v005.py) porte le boitier, l'ecran et les fenetres vides, les boutons, les centres fixes des potards et
+// les logos ; le plugin dessine par-dessus : toutes les inscriptions et les points, potards (couronne qui tourne, reflet
+// fixe, repere), valeurs, ecran de la capture, vu-metres a LEDs (48 LEDs, memoire de crete, reflet dans le verre),
+// diodes et inverseurs STACK / POWER.
+// Repere logique 750 x 300 points (taille « 60 % ») ; anti-gel v2 (fond mis en cache par le timer).
 // ============================================================================
 namespace
 {
-    constexpr int kW = 760, kH = 317;
-    // partie visible : le boitier seul, sans le fond perdu (marge noire du fond : 22 / 22 / 18 / 45 px sur 2560)
-    constexpr float kVisX = 22.0f * 760.0f / 2560.0f, kVisY = 18.0f * 760.0f / 2560.0f;
-    constexpr float kVisW = 760.0f - 2.0f * kVisX, kVisH = 317.0f - kVisY - 45.0f * 760.0f / 2560.0f;
-    constexpr int kWin = 747, kWinH = 298;      // fenetre « 60 % » (meme largeur qu'Impulse)
+    constexpr int kW = 750, kH = 300;
+    constexpr float kVisX = 0.0f, kVisY = 0.0f, kVisW = (float) kW, kVisH = (float) kH;
+    constexpr int kWin = 747, kWinH = 299;      // fenetre « 60 % » (meme largeur qu'Impulse)
     const float kScales[3] = { 1.0f, 1.25f, 5.0f / 3.0f };   // 60 % (defaut) / 75 % / 100 %
 
     namespace col
@@ -45,57 +44,54 @@ namespace
     juce::Font fSemi (float h)   { return juce::Font (juce::FontOptions (Fonts::get().semi).withHeight (h)); }
     juce::Font fBold (float h)   { return juce::Font (juce::FontOptions (Fonts::get().bold).withHeight (h)); }
     juce::Font fMedium (float h) { return juce::Font (juce::FontOptions (Fonts::get().medium).withHeight (h)); }
+    juce::Font emSemi (float px)   { return juce::Font (juce::FontOptions (Fonts::get().semi).withPointHeight (px)); }
+    juce::Font emMedium (float px) { return juce::Font (juce::FontOptions (Fonts::get().medium).withPointHeight (px)); }
     juce::Font fName (float h)
     {
         auto f = fSemi (h);
         f.setFeatureSetting ({ juce::FontFeatureTag ("calt"), juce::FontFeatureSetting::featureDisabled });
         return f;
     }
-    // echelle RTW (peak meter plasma) : position 0..1 en fonction des dBFS, dilatee en haut ; table partagee avec tools/render_art.py
-    inline float rtwPos (float db)
-    {
-        static const float D[] = { -50.0f, -40.0f, -30.0f, -20.0f, -10.0f, 0.0f };
-        static const float P[] = {  0.0f,  0.10f,  0.22f,  0.38f,  0.64f, 1.0f };
-        if (db <= D[0]) return 0.0f;
-        for (int i = 1; i < 6; ++i)
-            if (db <= D[i]) return P[i - 1] + (P[i] - P[i - 1]) * (db - D[i - 1]) / (D[i] - D[i - 1]);
-        return 1.0f;
-    }
     juce::String dotSep() { return juce::String (juce::CharPointer_UTF8 ("  \xc2\xb7  ")); }
 
-    // ---- geometrie : points logiques = unites de la maquette (1999 de large) x 760 / 1999
-    constexpr float kDs = 760.0f / 1999.0f;
+    // ---- geometrie : points logiques = unites de la maquette v005 (3600 de large) x 750 / 3600
+    constexpr float kDs = (float) kW / 3600.0f;
     constexpr float D (float v) { return v * kDs; }
     const juce::Rectangle<float> R (float x0, float y0, float x1, float y1) { return { D (x0), D (y0), D (x1 - x0), D (y1 - y0) }; }
+    constexpr float M (float oldUnits) { return D (oldUnits * 50.0f / 21.0f); }   // mesures des LEDs de l'ancienne maquette (barre de 21)
 
-    const float kKnobX[6] = { D (331.5f), D (547.2f), D (760.7f), D (974.5f), D (1187.7f), D (1402.4f) };
-    const float kKnobY = D (531.0f);
+    constexpr float kKnobXd[6] = { 600.0f, 1000.0f, 1400.0f, 1800.0f, 2200.0f, 2600.0f };
+    const float kKnobX[6] = { D (600.0f), D (1000.0f), D (1400.0f), D (1800.0f), D (2200.0f), D (2600.0f) };
+    constexpr float kKnobYd = 950.0f;
+    const float kKnobY = D (kKnobYd);
+    constexpr float kKnobBox = 300.0f;                 // composant du potard (couronne de 280 au centre)
     constexpr float kSweep = 120.0f;   // course du repere : -120 .. +120 degres, centre de la course en haut
-    const float kIndR0 = D (31.6f), kIndR1 = D (71.8f), kIndW = D (4.4f);    // repere blanc arrondi (image du potard fournie)
-    const float kValueBase = D (412.2f);                                       // valeur au-dessus du potard
-    const juce::Point<float> kJewel (D (1618.4f), D (531.0f));             // voyant et inverseur sur l'axe des potards
-    const juce::Rectangle<float> rLedSprite = R (1570, 482.5f, 1667, 579.5f);
-    const juce::Point<float> kToggle (D (1721.0f), D (531.0f));
-    // mode « stack » : bouton IMPULSE sous POWER ; proportions de la partie visible d'Impulse (repere 1876 x 782)
-    const juce::Rectangle<float> rStackBtn = R (1593, 672, 1829, 731);
+    constexpr float kDotR = 162.0f, kDotSize = 5.5f;   // graduation : 9 points tous les 30 degres
+    // titres, valeurs et graduations des potards (lignes de base)
+    constexpr float kTitleBase = 703.52f, kValueBase = 757.0f, kScaleBase = 1088.0f;
+    // diodes et inverseurs (STACK a gauche, POWER a droite)
+    const juce::Point<float> kDiodeStack (D (2954.0f), D (783.43f)), kDiodePower (D (3174.0f), D (783.43f));
+    const float kDiodeSprite = D (280.0f);
+    const juce::Point<float> kSwStack (D (2954.0f), D (1029.71f)), kSwPower (D (3174.0f), D (1029.71f));
+    const float kToggleSprite = D (252.0f);
+    juce::Rectangle<float> diodeRect (juce::Point<float> c) { return { c.x - kDiodeSprite * 0.5f, c.y - kDiodeSprite * 0.5f, kDiodeSprite, kDiodeSprite }; }
+    // proportions de la partie visible d'Impulse (repere 1876 x 782) pour le mode stack
     constexpr float kImpulseAspect = (1876.0f - 2.0f * 16.1f) / (782.0f - 13.2f - 33.0f);
-    const float kToggleSprite = D (170.0f);
-    const juce::Point<float> kGear (D (1913.0f), D (75.0f));
-    const float kGearR = D (39.0f);
-    // ecran : infos de la capture a gauche, etat (CPU, latence, messages) a droite du filet
-    const juce::Rectangle<float> rLcd[1] = { R (156, 126, 1684, 296) };
-    const juce::Rectangle<float> rRow[1] = { R (140, 110, 1700, 312) };
-    const juce::Rectangle<float> rLcdInfo = R (225, 126, 1195, 296);
-    const juce::Rectangle<float> rStatus = R (1222, 126, 1684, 296), rStatusText = R (1222, 126, 1684, 296);
-    const juce::Rectangle<float> rLib = R (1707, 165, 1783, 241), rPrev = R (1791, 165, 1867, 241), rNext = R (1874, 165, 1950, 241);
-    // vu-metres : 48 LEDs, reflet sur le bord du verre cote exterieur, voyant d'ecretage au-dessus
-    const juce::Rectangle<float> rMeterWinIn = R (40, 300, 140, 752), rMeterWinOut = R (1856, 300, 1958, 752);
-    const juce::Rectangle<float> rMeterIn = R (66, 390, 87, 714), rMeterOut = R (1916, 390, 1937, 714);
-    const float kReflXIn = D (51.1f), kReflXOut = D (1947.5f);
-    const juce::Point<float> kClipIn (D (76.1f), D (369.7f)), kClipOut (D (1926.4f), D (369.5f));
-    // visibilite du reflet de chaque LED (bas -> haut), relevee sur la maquette par tools/design_assets.py
+    // ecran : infos de la capture a gauche (alignees sur le bord droit de la fenetre IN), etat a droite du filet
+    // (filet dans l'axe du potard OUTPUT)
+    const juce::Rectangle<float> rLcd[1] = { R (58, 212, 3080, 537) };
+    const juce::Rectangle<float> rRow[1] = { R (50, 204, 3088, 545) };
+    constexpr float kInfoX = 212.0f, kDividerX = 2200.0f, kStatusCx = 2640.0f;
+    const juce::Rectangle<float> rLcdInfo = R (212, 212, 2160, 537);
+    const juce::Rectangle<float> rStatus = R (2210, 214, 3076, 535), rStatusText = R (2230, 214, 3056, 535);
+    const juce::Rectangle<float> rLib = R (3114, 312.5f, 3234, 432.5f), rPrev = R (3268, 312.5f, 3388, 432.5f), rNext = R (3422, 312.5f, 3542, 432.5f);
+    // vu-metres : 48 LEDs, reflet sur le bord exterieur du verre ; ecretage = 3 LEDs du haut en rouge vif
+    const juce::Rectangle<float> rMeterWinIn = R (58, 571, 212, 1348), rMeterWinOut = R (3388, 571, 3542, 1348);
+    const juce::Rectangle<float> rMeterIn = R (92, 671, 142, 1280), rMeterOut = R (3458, 671, 3508, 1280);
+    const float kReflXIn = D (76.0f), kReflXOut = D (3524.0f);
+    // visibilite du reflet de chaque LED (bas -> haut), relevee sur l'ancienne maquette
     const float kMeterVis[48] = { 0.048f, 0.182f, 0.064f, 0.046f, 0.110f, 0.308f, 0.352f, 0.217f, 0.127f, 0.472f, 0.533f, 0.224f, 0.216f, 0.337f, 0.395f, 0.327f, 0.225f, 0.242f, 0.396f, 0.695f, 0.114f, 0.136f, 0.689f, 0.371f, 0.691f, 0.403f, 0.297f, 0.709f, 0.244f, 0.484f, 0.375f, 0.110f, 0.115f, 0.436f, 0.202f, 0.243f, 0.145f, 0.278f, 0.205f, 0.053f, 0.012f, 0.033f, 0.012f, 0.011f, 0.009f, 0.003f, 0.008f, 0.002f };
-    // echelle gravee de la maquette (dBFS -> position 0..1 sur la hauteur de la barre)
+    // echelle gravee (dBFS -> position 0..1 sur la hauteur de la barre)
     inline float meterPos (float db)
     {
         static const float Dd[] = { -50.0f, -40.0f, -30.0f, -20.0f, -12.0f, -6.0f, 0.0f };
@@ -107,16 +103,21 @@ namespace
     }
     const juce::Colour kSilk (0xfff7f7f5);           // serigraphie blanche de la maquette
 
-    // visuels photo-realistes calcules par tools/render_art.py (2 pixels par point)
+    // visuels photo-realistes calcules par tools/design_v005.py
     struct Art
     {
-        juce::Image bg, ledOn, toggleUp, toggleDown;
+        juce::Image bg, crown, reflect, indicator, toggleUp, toggleDown, diodeOn, diodeOff;
         Art()
         {
-            bg = juce::ImageCache::getFromMemory (BinaryData::bg_png, BinaryData::bg_pngSize);
-            ledOn = juce::ImageCache::getFromMemory (BinaryData::led_on_png, BinaryData::led_on_pngSize);
-            toggleUp = juce::ImageCache::getFromMemory (BinaryData::toggle_up_png, BinaryData::toggle_up_pngSize);
-            toggleDown = juce::ImageCache::getFromMemory (BinaryData::toggle_down_png, BinaryData::toggle_down_pngSize);
+            auto ld = [] (const void* d, int n) { return juce::ImageCache::getFromMemory (d, n); };
+            bg = ld (BinaryData::bg_png, BinaryData::bg_pngSize);
+            crown = ld (BinaryData::knob_crown_png, BinaryData::knob_crown_pngSize);
+            reflect = ld (BinaryData::knob_reflect_png, BinaryData::knob_reflect_pngSize);
+            indicator = ld (BinaryData::knob_indicator_png, BinaryData::knob_indicator_pngSize);
+            toggleUp = ld (BinaryData::switch_up_png, BinaryData::switch_up_pngSize);
+            toggleDown = ld (BinaryData::switch_down_png, BinaryData::switch_down_pngSize);
+            diodeOn = ld (BinaryData::diode_on_png, BinaryData::diode_on_pngSize);
+            diodeOff = ld (BinaryData::diode_off_png, BinaryData::diode_off_pngSize);
         }
         static const Art& get() { static Art a; return a; }
     };
@@ -180,8 +181,8 @@ public:
     juce::ParameterAttachment attachment;
 };
 
-// ---- potard « chicken-head » en bakelite (0 - 10 sur 300 degres)
-//      seul le pointeur tourne ; reflets et ombre portee restent fixes (lumiere en haut a gauche)
+// ---- potard : centre fixe (dans le fond), couronne crantee qui tourne, reflet fixe par-dessus, repere blanc qui tourne
+//      image composee mise en cache (recalculee seulement quand la valeur, l'etat ou la resolution changent)
 class Knob : public ParamControl
 {
 public:
@@ -191,27 +192,35 @@ public:
 
     void paint (juce::Graphics& g) override
     {
-        useAccent();
-        // le potard est dans le fond (photo) : seul le repere blanc tourne (300 degres), les reflets restent fixes
-        const auto c = getLocalBounds().toFloat().getCentre();
-        const float ang = juce::degreesToRadians (-kSweep + 2.0f * kSweep * norm());   // course = graduation (9 points)
-        const float sn = std::sin (ang), cs = std::cos (ang);
-        const juce::Point<float> p0 (c.x + sn * kIndR0, c.y - cs * kIndR0), p1 (c.x + sn * kIndR1, c.y - cs * kIndR1);
-        const float a = dimmed ? 0.35f : 1.0f;
-        auto bar = [&] (juce::Point<float> q0, juce::Point<float> q1, float w)
+        const float ps = juce::jmax (1.0f, g.getInternalContext().getPhysicalPixelScaleFactor());
+        const int w = juce::jmax (1, (int) std::ceil ((float) getWidth() * ps)), h = juce::jmax (1, (int) std::ceil ((float) getHeight() * ps));
+        const float n = norm();
+        if (! cache.isValid() || cache.getWidth() != w || cache.getHeight() != h || n != cacheNorm || dimmed != cacheDim)
         {
-            juce::Path pth; pth.startNewSubPath (q0); pth.lineTo (q1);
-            juce::Path out; juce::PathStrokeType (w, juce::PathStrokeType::curved, juce::PathStrokeType::rounded).createStrokedPath (out, pth);
-            return out;
-        };
-        const juce::Point<float> sh (0.35f, 0.5f);
-        g.setColour (juce::Colours::black.withAlpha (0.55f * a));
-        g.fillPath (bar (p0 + sh, p1 + sh, kIndW + 0.5f));
-        g.setColour (juce::Colour (0xffe9e9e7).withAlpha (a));
-        g.fillPath (bar (p0, p1, kIndW));
-        g.setColour (juce::Colours::white.withAlpha (0.55f * a));
-        g.fillPath (bar (p0 + juce::Point<float> (-0.15f, -0.15f), p1 + juce::Point<float> (-0.15f, -0.15f), kIndW * 0.45f));
-        if (LearnBlink::shown (proc, learnIdx)) LearnBlink::draw (g, getLocalBounds().toFloat().reduced (2.0f), 12.0f);
+            cache = juce::Image (juce::Image::ARGB, w, h, true);
+            juce::Graphics cg (cache);
+            cg.setImageResamplingQuality (juce::Graphics::highResamplingQuality);
+            const auto& art = Art::get();
+            const float ang = juce::degreesToRadians (-kSweep + 2.0f * kSweep * n);
+            const float k = (float) w * (280.0f / kKnobBox) / (float) art.crown.getWidth();
+            auto place = [&] (const juce::Image& im, float a)
+            {
+                return juce::AffineTransform::translation (-0.5f * (float) im.getWidth(), -0.5f * (float) im.getHeight())
+                           .rotated (a).scaled (k).translated (0.5f * (float) w, 0.5f * (float) h);
+            };
+            cg.drawImageTransformed (art.crown, place (art.crown, ang));
+            cg.drawImageTransformed (art.reflect, place (art.reflect, 0.0f));
+            cg.setOpacity (dimmed ? 0.35f : 1.0f);
+            cg.drawImageTransformed (art.indicator, place (art.indicator, ang));
+            cacheNorm = n; cacheDim = dimmed;
+        }
+        g.drawImageTransformed (cache, juce::AffineTransform::scale ((float) getWidth() / (float) w, (float) getHeight() / (float) h));
+        if (LearnBlink::shown (proc, learnIdx)) LearnBlink::draw (g, getLocalBounds().toFloat().reduced (2.0f), getWidth() * 0.5f);
+    }
+    bool hitTest (int x, int y) override
+    {
+        const float r = (float) getWidth() * 0.5f;
+        return juce::Point<float> ((float) x, (float) y).getDistanceFrom ({ r, r }) <= r * (290.0f / kKnobBox);
     }
     void mouseDown (const juce::MouseEvent& e) override
     {
@@ -234,6 +243,9 @@ public:
 private:
     bool dragging = false;
     float startNorm = 0.0f;
+    juce::Image cache;
+    float cacheNorm = -1.0f;
+    bool cacheDim = false;
 };
 
 // ---- inverseur a levier (nickel), deux positions : haut = valeur 0, bas = valeur 1
@@ -689,64 +701,23 @@ private:
 };
 
 // ============================================================================ contenu de la fenetre
-// ---- bouton IMPULSE (mode stack) : facon boutons d'Ampire, icone de deux modules empiles, voyant de la couleur du POWER
+// ---- inverseur STACK (mode stack : l'Impulse de la meme piste REAPER colle sous Ampire) ; levier haut = actif.
+//      La diode STACK (dessinee par la facade) s'allume quand le mode est actif.
 class StackBtn : public juce::Component
 {
 public:
     std::function<void()> onClick;
     bool available = false, on = false;
-    juce::Colour led { 0xffffa040 };
+    juce::Colour led { 0xffff2a14 };
     void paint (juce::Graphics& g) override
     {
-        const auto r = getLocalBounds().toFloat();
-        const float u = r.getHeight() / 22.5f, rad = 3.2f * u;
-        for (int i = 5; i >= 1; --i)
-        {
-            g.setColour (juce::Colours::black.withAlpha (0.10f));
-            g.fillRoundedRectangle (r.translated (0, (float) i * 0.45f * u).expanded (0.15f * (float) i * u, 0), rad);
-        }
-        g.setColour (juce::Colour (0xff030303));
-        g.fillRoundedRectangle (r, rad);
-        const bool down = pressed || on;
-        auto f = r.reduced (1.5f * u).translated (0, pressed ? 0.4f * u : 0.0f);
-        const float lift = isMouseOver() && available && ! pressed ? 0.06f : 0.0f;
-        g.setColour (juce::Colour (down ? 0xff1c1c1c : 0xff242424).brighter (lift));
-        g.fillRoundedRectangle (f, rad - 1.0f * u);
-        g.setColour (juce::Colours::white.withAlpha (down ? 0.30f : 0.78f));
-        g.fillRect (f.getX() + 2.0f * u, f.getY() + 0.3f * u, f.getWidth() - 4.0f * u, 0.8f * u);
-        const juce::Colour ink = juce::Colour (0xffe8e8e6).withAlpha (available ? 1.0f : 0.35f);
-        // icone : deux modules empiles (celui du bas plein)
-        const float ix = f.getX() + 8.0f * u, iy = f.getCentreY();
-        g.setColour (ink);
-        g.drawRoundedRectangle (ix, iy - 5.5f * u, 12.0f * u, 4.0f * u, 1.0f * u, 1.0f * u);
-        g.fillRoundedRectangle (ix, iy + 1.0f * u, 12.0f * u, 4.0f * u, 1.0f * u);
-        g.setFont (fSemi (8.6f * u));
-        g.drawText ("IMPULSE", juce::Rectangle<float> (ix + 16.0f * u, f.getY(), 48.0f * u, f.getHeight()), juce::Justification::centredLeft);
-        // voyant
-        const juce::Point<float> c (f.getRight() - 8.5f * u, f.getCentreY());
-        const float lr = 2.0f * u;
-        if (on && available)
-        {
-            for (int i = 6; i >= 1; --i)
-            {
-                g.setColour (led.withAlpha (0.06f * (float) (7 - i)));
-                g.fillEllipse (c.x - lr - (float) i * 0.7f * u, c.y - lr - (float) i * 0.7f * u, 2.0f * (lr + (float) i * 0.7f * u), 2.0f * (lr + (float) i * 0.7f * u));
-            }
-            g.setColour (led);
-        }
-        else g.setColour (juce::Colour (0xff2a2320));
-        g.fillEllipse (c.x - lr, c.y - lr, lr * 2.0f, lr * 2.0f);
+        drawSpriteIn (g, on ? Art::get().toggleUp : Art::get().toggleDown, getLocalBounds().toFloat());
     }
-    void mouseDown (const juce::MouseEvent& e) override { if (! e.mods.isPopupMenu()) { pressed = true; repaint(); } }
-    void mouseUp (const juce::MouseEvent& e) override
+    void mouseDown (const juce::MouseEvent& e) override
     {
-        const bool was = pressed; pressed = false; repaint();
-        if (was && getLocalBounds().contains (e.getPosition()) && onClick) onClick();
+        if (e.mods.isPopupMenu()) { showContextMenu (*this, -1); return; }
+        if (onClick) onClick();
     }
-    void mouseEnter (const juce::MouseEvent&) override { repaint(); }
-    void mouseExit (const juce::MouseEvent&) override { repaint(); }
-private:
-    bool pressed = false;
 };
 
 class AmpireContent : public juce::Component,
@@ -779,7 +750,7 @@ public:
         {
             knobs[i] = std::make_unique<Knob> (proc, defs[i].id, defs[i].learn);
             const int col = i;
-            knobs[i]->setBounds (toInt ({ kKnobX[col] - D (70.0f), kKnobY - D (70.0f), D (140.0f), D (140.0f) }));
+            knobs[i]->setBounds (toInt ({ kKnobX[col] - D (kKnobBox) * 0.5f, kKnobY - D (kKnobBox) * 0.5f, D (kKnobBox), D (kKnobBox) }));
             addChildComponent (*knobs[i]);
             auto* k = knobs[i].get();
             const juce::String name (defs[i].name);
@@ -804,8 +775,8 @@ public:
         }
         // ---- plaque : inverseurs + voyant
         addAndMakeVisible (power);
-        power.setBounds (toInt ({ kToggle.x - kToggleSprite * 0.5f, kToggle.y - kToggleSprite * 0.5f, kToggleSprite, kToggleSprite }));
-        power.onValue = [this] { askRepaint (toInt (rLedSprite)); };
+        power.setBounds (toInt ({ kSwPower.x - kToggleSprite * 0.5f, kSwPower.y - kToggleSprite * 0.5f, kToggleSprite, kToggleSprite }));
+        power.onValue = [this] { askRepaint (toInt (diodeRect (kDiodePower))); };
 
         // ---- baie : la capture
         {
@@ -823,9 +794,9 @@ public:
             sl.next->onClick = [this] { proc.stepCapture (0, +1); };
         }
 
-        // ---- mode stack : bouton IMPULSE sous POWER
+        // ---- mode stack : inverseur STACK (a gauche de POWER)
         addAndMakeVisible (stackBtn);
-        stackBtn.setBounds (toInt (rStackBtn));
+        stackBtn.setBounds (toInt ({ kSwStack.x - kToggleSprite * 0.5f, kSwStack.y - kToggleSprite * 0.5f, kToggleSprite, kToggleSprite }));
         stackBtn.onClick = [this] { if (auto* ed = findParentComponentOfClass<AmpireEditor>()) ed->toggleStack(); };
 
         addChildComponent (library);
@@ -856,7 +827,7 @@ public:
         else drawStatic (g, false);
 
         drawJewel (g);
-        drawFaceLabels (g);
+        drawFaceLabels (g);          // inscriptions dessinees a chaque fois (meme rendu net que les valeurs, a toutes les tailles)
         drawKnobValues (g);
         drawSizeLabels (g);
         drawSlot (g, 0);
@@ -882,46 +853,82 @@ public:
         if (n == 2) return sizeStep() == 1 ? "FULL" : "LITE";
         return juce::String (sizeStep() + 1) + " / " + juce::String (n);
     }
-    // ---- serigraphie de la facade : TOUTES les inscriptions (titres, valeurs, graduations, POWER / ON / OFF) sont
-    //      dessinees ici avec le meme rendu (police, blanc, ombre) ; positions et hauteurs de capitale relevees sur la maquette
-    static juce::Font silkFont (float capDesign, float kerning, bool medium = false)
-    {
-        const float h = D (capDesign) / 0.727f * 1.15f;
-        return (medium ? fMedium (h) : fSemi (h)).withExtraKerningFactor (kerning);
-    }
-    static void silkText (juce::Graphics& g, const juce::String& t, float cxDesign, float baselineDesign, const juce::Font& f, float alpha = 1.0f)
+    // ---- serigraphie de la facade : TOUTES les inscriptions (titres, valeurs, graduations, STACK / POWER / ON / OFF,
+    //      IN / OUT, echelles des vu-metres) sont dessinees ici avec le meme rendu (Inter Medium, blanc, ombre legere) ;
+    //      corps et lignes de base en pixels de la maquette v005 (corps Inter = capitale du Myriad Pro 48 px de la maquette)
+    static juce::Font silkFont (float sizeDesign, float kerning = 0.0f) { return emMedium (D (sizeDesign)).withExtraKerningFactor (kerning); }
+    static void silkText (juce::Graphics& g, const juce::String& t, float xDesign, float baselineDesign, const juce::Font& f, float alpha = 1.0f,
+                          juce::Justification j = juce::Justification::horizontallyCentred)
     {
         g.setFont (f);
-        const auto r = juce::Rectangle<float> (D (cxDesign) - D (110.0f), D (baselineDesign) - f.getAscent(), D (220.0f), f.getHeight());
+        const float x = D (xDesign), y = D (baselineDesign);
+        const auto jj = j.getOnlyHorizontalFlags();
+        auto at = [&] (float dx, float dy)
+        {
+            if (jj == juce::Justification::left) g.drawSingleLineText (t, juce::roundToInt (x + dx), juce::roundToInt (y + dy), juce::Justification::left);
+            else
+            {
+                juce::GlyphArrangement ga;
+                ga.addLineOfText (f, t, 0.0f, 0.0f);
+                const float w = ga.getBoundingBox (0, -1, true).getRight();
+                const float x0 = jj == juce::Justification::right ? x - w : x - w * 0.5f;
+                ga.moveRangeOfGlyphs (0, -1, x0 + dx, y + dy);
+                ga.draw (g);
+            }
+        };
         g.setColour (juce::Colours::black.withAlpha (0.45f * alpha));
-        g.drawText (t, r.translated (0.0f, 0.6f), juce::Justification::centredTop, false);
-        g.setColour (kSilk.withAlpha (alpha));
-        g.drawText (t, r, juce::Justification::centredTop, false);
+        at (D (1.6f), D (1.6f));
+        g.setColour (kSilk.withAlpha (0.97f * alpha));
+        at (0.0f, 0.0f);
     }
-    static constexpr float kTitleX[6] = { 336.9f, 548.6f, 761.0f, 972.6f, 1185.8f, 1400.4f };
-    static constexpr float kScaleX[6][2] = { { 268.2f, 401.8f }, { 485.4f, 614.1f }, { 698.0f, 828.8f },
-                                             { 910.7f, 1038.7f }, { 1120.6f, 1250.3f }, { 1338.0f, 1469.6f } };
-    juce::Rectangle<int> valueArea (int i) const { return toInt ({ D (kTitleX[i]) - D (70.0f), D (385.0f), D (140.0f), D (32.0f) }); }
+    juce::Rectangle<int> valueArea (int i) const { return toInt (R (kKnobXd[i] - 190.0f, kValueBase - 45.0f, kKnobXd[i] + 190.0f, kValueBase + 14.0f)); }
     void drawKnobValues (juce::Graphics& g)
     {
-        static const juce::Font f = silkFont (19.4f, 0.0f);
+        static const juce::Font f = silkFont (36.0f);
         for (int i = 0; i < 6; ++i)
-            silkText (g, knobValueText (i), kTitleX[i], 412.2f, f, (i == 5 && numSizes() < 2) ? 0.40f : 1.0f);
+            silkText (g, knobValueText (i), kKnobXd[i], kValueBase, f, (i == 5 && numSizes() < 2) ? 0.40f : 1.0f);
     }
+    static juce::String minusSign (juce::String t) { return t.replace ("-", juce::String (juce::CharPointer_UTF8 ("\xe2\x88\x92"))); }
+    static float scaleX (int i, int side) { return kKnobXd[i] + (side == 0 ? -1.0f : 1.0f) * kDotR * std::sin (juce::degreesToRadians (120.0f)); }
+    // inscriptions fixes
     void drawFaceLabels (juce::Graphics& g)
     {
-        static const juce::Font title = silkFont (20.5f, 0.07f), scale = silkFont (16.8f, 0.03f, true), sw = silkFont (19.0f, 0.05f);
+        static const juce::Font title = silkFont (44.5f, 0.02f), small = silkFont (36.0f), io = silkFont (40.0f, 0.02f), grad = silkFont (23.0f);
         const char* names[5] = { "INPUT", "BASS", "MIDDLE", "TREBLE", "OUTPUT" };
         const char* scales[5][2] = { { "-20", "+20" }, { "0", "10" }, { "0", "10" }, { "0", "10" }, { "-40", "+40" } };
         for (int i = 0; i < 5; ++i)
         {
-            silkText (g, names[i], kTitleX[i], 363.3f, title);
-            silkText (g, scales[i][0], kScaleX[i][0], 640.5f, scale);
-            silkText (g, scales[i][1], kScaleX[i][1], 640.5f, scale);
+            silkText (g, names[i], kKnobXd[i], kTitleBase, title);
+            silkText (g, minusSign (scales[i][0]), scaleX (i, 0), kScaleBase, small);
+            silkText (g, minusSign (scales[i][1]), scaleX (i, 1), kScaleBase, small);
         }
-        silkText (g, "POWER", 1715.8f, 363.3f, title);
-        silkText (g, "ON", 1716.9f, 435.0f, sw);
-        silkText (g, "OFF", 1720.3f, 620.0f, sw);
+        silkText (g, "STACK", 2954.0f, kTitleBase, title);
+        silkText (g, "POWER", 3174.0f, kTitleBase, title);
+        for (float x : { 2954.0f, 3174.0f })
+        {
+            silkText (g, "ON", x, 900.37f, small);
+            silkText (g, "OFF", x, 1182.78f, small);
+        }
+        silkText (g, "IN", 135.0f, 640.0f, io);
+        silkText (g, "OUT", 3465.0f, 640.0f, io);
+        // echelles des vu-metres (graduation a droite de IN, a gauche de OUT)
+        const float ticks[7] = { 0.0f, -6.0f, -12.0f, -20.0f, -30.0f, -40.0f, -50.0f };
+        for (float db : ticks)
+        {
+            const float y = 1280.0f - meterPos (db) * 609.0f;
+            const juce::String lab = minusSign (juce::String ((int) db));
+            for (int side = 0; side < 2; ++side)
+            {
+                const auto tick = side == 0 ? R (145.0f, y - 1.3f, 153.0f, y + 1.3f) : R (3447.0f, y - 1.3f, 3455.0f, y + 1.3f);
+                g.setColour (juce::Colours::black.withAlpha (0.45f)); g.fillRect (tick.translated (D (1.6f), D (1.6f)));
+                g.setColour (kSilk.withAlpha (0.97f)); g.fillRect (tick);
+                if (side == 0) silkText (g, lab, 161.0f, y + 8.2f, grad, 1.0f, juce::Justification::left);
+                else           silkText (g, lab, 3439.0f, y + 8.2f, grad, 1.0f, juce::Justification::right);
+            }
+        }
+        // filet de l'ecran (dans l'axe du potard OUTPUT)
+        g.setColour (juce::Colour (0xff8a8b8d));
+        g.fillRect (R (kDividerX - 1.25f, 262.0f, kDividerX + 1.25f, 487.0f));
     }
 
     // voyant rubis (allume quand Ampire est en marche)
@@ -939,56 +946,57 @@ public:
     }
     void drawSizeLabels (juce::Graphics& g)
     {
-        static const juce::Font title = silkFont (20.5f, 0.07f), scale = silkFont (16.8f, 0.03f, true);
+        static const juce::Font title = silkFont (44.5f, 0.02f), scale = silkFont (36.0f);
         const int n = numSizes();
         const bool ladder = n > 2;
         const float a = n >= 2 ? 1.0f : 0.40f;
-        silkText (g, ladder ? "GAIN STEP" : "A2 SIZE", kTitleX[5], 363.3f, title, a);
-        silkText (g, ladder ? "LOW" : "LITE", kScaleX[5][0], 640.5f, scale, a);
-        silkText (g, ladder ? "HIGH" : "FULL", kScaleX[5][1], 640.5f, scale, a);
+        silkText (g, ladder ? "GAIN STEP" : "A2 SIZE", kKnobXd[5], kTitleBase, title, a);
+        silkText (g, ladder ? "LOW" : "LITE", scaleX (5, 0), kScaleBase, scale, a);
+        silkText (g, ladder ? "HIGH" : "FULL", scaleX (5, 1), kScaleBase, scale, a);
     }
-    juce::Rectangle<int> sizeLabelArea() const { return toInt (R (1270, 330, 1530, 650)); }
+    juce::Rectangle<int> sizeLabelArea() const { return toInt (R (2330, 640, 2870, 1110)); }
 
     void drawJewel (juce::Graphics& g)
     {
-        // voyant POWER : allume = image de la maquette (recoloree selon le reglage) posee sur le voyant eteint du fond
-        if (power.norm() > 0.5f) drawSpriteIn (g, ledImage.isValid() ? ledImage : Art::get().ledOn, rLedSprite);
+        // diodes STACK et POWER : image allumee (recoloree selon le reglage « LED colour ») ou eteinte
+        const auto& on = ledImage.isValid() ? ledImage : Art::get().diodeOn;
+        const bool stackLit = stackBtn.on && stackBtn.available;
+        drawSpriteIn (g, stackLit ? on : Art::get().diodeOff, diodeRect (kDiodeStack));
+        drawSpriteIn (g, power.norm() > 0.5f ? on : Art::get().diodeOff, diodeRect (kDiodePower));
     }
+    void repaintDiodes() { askRepaint (toInt (diodeRect (kDiodeStack))); askRepaint (toInt (diodeRect (kDiodePower))); }
 public:
-    // couleur et halo du voyant : l'image de la maquette est recoloree une fois (thread de messages, hors paint)
+    // couleur et halo des diodes : l'image fournie (diode rouge) est recoloree une fois (thread de messages, hors paint)
     juce::Colour ledColour { AmpireSettings::ledColour (JucePlugin_Name) };
     float ledGlow = AmpireSettings::glowAttr (JucePlugin_Name, "ledGlow", 1.0f);
     float screenGlow = 0.0f;                         // pas de halo sur l'ecran (texte blanc fixe)
     void rebuildLedImage()
     {
-        const auto& src = Art::get().ledOn;
-        if (ledColour.getARGB() == AmpireSettings::kDefaultLed && std::abs (ledGlow - 1.0f) < 0.01f) { ledImage = {}; askRepaint (toInt (rLedSprite)); return; }
+        const auto& src = Art::get().diodeOn;
+        const bool recolour = ledColour.getARGB() != AmpireSettings::kDefaultLed;
+        if (! recolour && std::abs (ledGlow - 1.0f) < 0.01f) { ledImage = {}; repaintDiodes(); return; }
         juce::Image img (juce::Image::ARGB, src.getWidth(), src.getHeight(), true);
-        const float cx = src.getWidth() * (1618.4f - 1570.0f) / 97.0f, cy = src.getHeight() * (522.5f - 474.0f) / 97.0f;
-        const float lensR = src.getWidth() * 15.0f / 97.0f;
+        const float c0 = 0.5f * (float) src.getWidth(), lensR = (float) src.getWidth() * 34.0f / 280.0f;
         const float cr = ledColour.getFloatRed(), cg = ledColour.getFloatGreen(), cb = ledColour.getFloatBlue();
         for (int y = 0; y < src.getHeight(); ++y)
             for (int x = 0; x < src.getWidth(); ++x)
             {
                 const auto p = src.getPixelAt (x, y);
-                const float a = p.getFloatAlpha();
+                float a = p.getFloatAlpha();
                 if (a <= 0.0f) continue;
-                const float r = p.getFloatRed(), gg = p.getFloatGreen(), b = p.getFloatBlue();
-                const float v = juce::jmax (r, gg, b), w = v > 0.0f ? juce::jmin (r, gg, b) / v : 0.0f;   // luminosite / blancheur
-                const float d = std::hypot ((float) x - cx, (float) y - cy);
-                // halo (hors de la lentille) : seule la lumiere orange est remplacee et dosee ; bague et plaque gardees
-                const float glowZone = juce::jlimit (0.0f, 1.0f, (d - lensR) / (src.getWidth() * 3.0f / 97.0f));
-                const float hue = juce::jlimit (0.0f, 1.0f, (p.getSaturation() - 0.25f) / 0.35f);      // part coloree du pixel
-                const float k = 1.0f + (ledGlow - 1.0f) * glowZone * hue;
-                const float nr = juce::jlimit (0.0f, 1.0f, (cr * (1.0f - w) + w) * v * k);
-                const float ng = juce::jlimit (0.0f, 1.0f, (cg * (1.0f - w) + w) * v * k);
-                const float nb = juce::jlimit (0.0f, 1.0f, (cb * (1.0f - w) + w) * v * k);
-                const float mix = juce::jmax (hue, 1.0f - glowZone);    // pixels neutres du halo (plaque) : inchanges
-                img.setPixelAt (x, y, juce::Colour::fromFloatRGBA (r + (nr - r) * mix, gg + (ng - gg) * mix, b + (nb - b) * mix,
-                                                                    juce::jlimit (0.0f, 1.0f, a * (1.0f + (juce::jmin (ledGlow, 1.0f) - 1.0f) * glowZone * hue))));
+                float r = p.getFloatRed(), gg = p.getFloatGreen(), b = p.getFloatBlue();
+                if (recolour)
+                {
+                    const float v = juce::jmax (r, gg, b), w = v > 0.0f ? juce::jmin (r, gg, b) / v : 0.0f;   // luminosite / blancheur
+                    r = (cr * (1.0f - w) + w) * v; gg = (cg * (1.0f - w) + w) * v; b = (cb * (1.0f - w) + w) * v;
+                }
+                const float d = std::hypot ((float) x + 0.5f - c0, (float) y + 0.5f - c0);
+                const float glowZone = juce::jlimit (0.0f, 1.0f, (d - lensR) / ((float) src.getWidth() * 3.0f / 280.0f));
+                a = juce::jlimit (0.0f, 1.0f, a * (1.0f + (ledGlow - 1.0f) * glowZone));
+                img.setPixelAt (x, y, juce::Colour::fromFloatRGBA (juce::jlimit (0.0f, 1.0f, r), juce::jlimit (0.0f, 1.0f, gg), juce::jlimit (0.0f, 1.0f, b), a));
             }
         ledImage = img;
-        askRepaint (toInt (rLedSprite));
+        repaintDiodes();
     }
 private:
     juce::Image ledImage;
@@ -1017,32 +1025,39 @@ private:
     void setTextCol (juce::Graphics& g, juce::Colour c) { textCol = c; g.setColour (c); }
 public:
 
+    // texte de l'ecran pose sur sa ligne de base (repere de la maquette v005)
+    void lcdLine (juce::Graphics& g, const juce::String& t, float xDesign, float baselineDesign, float wDesign, const juce::Font& f,
+                  juce::Justification j = juce::Justification::topLeft)
+    {
+        g.setFont (f);
+        const float x = j.testFlags (juce::Justification::horizontallyCentred) ? D (xDesign - wDesign * 0.5f) : D (xDesign);
+        screenText (g, t, juce::Rectangle<float> (x, D (baselineDesign) - f.getAscent(), D (wDesign), f.getHeight()),
+                    juce::Justification (j.getOnlyHorizontalFlags() | juce::Justification::top));
+    }
     void drawSlot (juce::Graphics& g, int s)
     {
         const auto& inf = info[s];
         const auto& m = inf.meta;
-        const auto lcd = rLcdInfo;
-        const bool on = true;
-        const float a = on ? 1.0f : 0.4f;
-        auto amber = [a] (float k) { return (k > 0.95f ? kSilk : k > 0.6f ? kSilk.withAlpha (0.92f) : kSilk.withAlpha (0.85f)).withMultipliedAlpha (a); };
-        const auto tr = lcd.withTrimmedLeft (D (233.3f) - lcd.getX()).withTrimmedRight (6.0f).withY (D (140.0f)).withHeight (D (140.0f));
-        const float xL = D (233.3f), xS = D (240.0f), w = lcd.getRight() - xL - 6.0f;
+        const float wInfo = kDividerX - 60.0f - kInfoX;
+        static const juce::Font fTitle = emSemi (D (66.0f)), fL2 = emMedium (D (40.0f)), fL3 = emMedium (D (38.0f));
         const bool showErr = inf.error.isNotEmpty() && juce::Time::getMillisecondCounter() < errUntil[s];
-        if (showErr) { g.setColour (col::err); g.setFont (fName (12.0f)); g.drawFittedText (inf.error, juce::Rectangle<float> (xL, D (145.0f), w, D (135.0f)).toNearestInt(), juce::Justification::centredLeft, 3, 0.8f); }
+        if (showErr)
+        {
+            g.setColour (col::err); g.setFont (emSemi (D (40.0f)));
+            g.drawFittedText (inf.error, R (kInfoX, 260.0f, kInfoX + wInfo, 490.0f).toNearestInt(), juce::Justification::centredLeft, 3, 0.8f);
+        }
         else if (inf.loaded)
         {
             const auto title = m.title.isNotEmpty() ? m.title : m.fileName;
-            setTextCol (g, amber (1.0f));
-            g.setFont (fName (16.0f));
-            screenText (g, title, juce::Rectangle<float> (xL, D (182.8f) - 14.5f, w, 18.0f), juce::Justification::bottomLeft);
+            setTextCol (g, kSilk);
+            lcdLine (g, title, kInfoX, 330.0f, wInfo, fTitle);
             const auto gear = (m.gearMake + " " + m.gearModel).trim();
             juce::StringArray l2;
             if (gear.isNotEmpty()) l2.add (gear);
             if (m.gearType.isNotEmpty()) l2.add (m.gearType.replace ("_", " "));
             if (m.toneType.isNotEmpty()) l2.add (m.toneType.replace ("_", " "));
-            setTextCol (g, amber (0.7f));
-            g.setFont (fMedium (9.6f));
-            screenText (g, l2.isEmpty() ? juce::String ("no gear information") : l2.joinIntoString (dotSep()), juce::Rectangle<float> (xS, D (221.0f) - 9.0f, w, 12.0f), juce::Justification::bottomLeft);
+            setTextCol (g, kSilk.withAlpha (0.92f));
+            lcdLine (g, l2.isEmpty() ? juce::String ("no gear information") : l2.joinIntoString (dotSep()), kInfoX, 400.0f, wInfo, fL2);
             juce::String fmt = m.family;
             if (m.slimmable && ! m.breakpoints.empty())
             {
@@ -1059,21 +1074,19 @@ public:
             if (m.hasInputLevel) fmt << dotSep() << "cal " << juce::String (m.inputLevel, 1) << " dBu";
             if (m.esr >= 0.0) fmt << dotSep() << "ESR " << juce::String (m.esr, 4);
             if (inf.fromEmbedded) fmt << dotSep() << "project copy";
-            setTextCol (g, amber (0.5f));
-            g.setFont (fMedium (9.3f));
-            screenText (g, fmt, juce::Rectangle<float> (xS, D (263.9f) - 8.5f, w, 11.0f), juce::Justification::bottomLeft);
+            setTextCol (g, kSilk.withAlpha (0.85f));
+            lcdLine (g, fmt, kInfoX, 468.0f, wInfo, fL3);
         }
-        else if (inf.loading) { setTextCol (g, amber (0.8f)); g.setFont (fName (14.0f)); screenText (g, "LOADING...", juce::Rectangle<float> (xL, D (182.8f) - 14.5f, w, 18.0f), juce::Justification::bottomLeft); }
+        else if (inf.loading) { setTextCol (g, kSilk.withAlpha (0.92f)); lcdLine (g, "LOADING...", kInfoX, 330.0f, wInfo, fTitle); }
         else
         {
             setTextCol (g, kSilk.withAlpha (0.45f));
-            g.setFont (fName (14.0f));
-            screenText (g, "EMPTY", juce::Rectangle<float> (xL, D (182.8f) - 14.5f, w, 18.0f), juce::Justification::bottomLeft);
-            g.setFont (fMedium (9.6f));
+            lcdLine (g, "EMPTY", kInfoX, 330.0f, wInfo, fTitle);
+            g.setFont (fL2);
             g.drawFittedText ("Click here or on the library button, use the arrows, or drop a .nam file (NAM A1 / A2)",
-                              juce::Rectangle<float> (xS, D (200.0f), w, 26.0f).toNearestInt(), juce::Justification::topLeft, 2);
+                              R (kInfoX, 365.0f, kInfoX + wInfo, 480.0f).toNearestInt(), juce::Justification::topLeft, 2);
         }
-        if (dropHover == s) { g.setColour (kSilk.withAlpha (0.8f)); g.drawRoundedRectangle (rLcd[s].reduced (2.0f), 4.0f, 1.5f); }
+        if (dropHover == s) { g.setColour (kSilk.withAlpha (0.8f)); g.drawRoundedRectangle (rLcd[s].reduced (D (14.0f)), D (12.0f), 1.5f); }
     }
 
     void drawStrip (juce::Graphics& g)
@@ -1087,12 +1100,12 @@ public:
             const float t = i >= N - 3 ? 1.0f : (i < N - 7 ? 0.0f : (float) (i - (N - 8)) / 5.0f);
             return meterMain.interpolatedWith (meterSat, t);
         };
-        auto meter = [&] (juce::Rectangle<float> r, float reflX, float level, float peak, float peakAlpha, bool clip, juce::Point<float> clipLed)
+        auto meter = [&] (juce::Rectangle<float> r, float reflX, float level, float peak, float peakAlpha, bool clip)
         {
             const int lit = juce::jlimit (0, N, (int) std::lround (meterPos (juce::Decibels::gainToDecibels (level, -100.0f)) * N));
             const int pk = juce::jlimit (-1, N - 1, (int) std::lround (meterPos (juce::Decibels::gainToDecibels (peak, -100.0f)) * N) - 1);
             const bool showPk = pk >= lit && peakAlpha > 0.01f && peak > 0.0f;
-            const float h = r.getHeight() / N, gap = D (1.6f);
+            const float h = r.getHeight() / N, gap = M (1.6f);
             auto ledRect = [&] (int i) { return juce::Rectangle<float> (r.getX(), r.getBottom() - (i + 1) * h + gap, r.getWidth(), h - gap); };
             // reflets dans le verre (sous les LEDs)
             for (int i = 0; i < lit; ++i)
@@ -1108,23 +1121,23 @@ public:
                 if (v < 0.01f) continue;
                 const auto c = ledColour (i);
                 const float cy = ledRect (i).getCentreY();
-                juce::ColourGradient gr (c.withAlpha (v), reflX, cy, c.withAlpha (0.0f), reflX + D (4.0f), cy, true);
+                juce::ColourGradient gr (c.withAlpha (v), reflX, cy, c.withAlpha (0.0f), reflX + M (4.0f), cy, true);
                 g.setGradientFill (gr);
-                g.fillEllipse (reflX - D (4.0f), cy - h * 1.15f, D (8.0f), h * 2.3f);
+                g.fillEllipse (reflX - M (4.0f), cy - h * 1.15f, M (8.0f), h * 2.3f);
             }
             if (showPk)
             {
                 const auto c = ledColour (pk);
                 const float cy = ledRect (pk).getCentreY();
-                juce::ColourGradient gr (c.withAlpha (0.4877f * 0.9f * peakAlpha), reflX, cy, c.withAlpha (0.0f), reflX + D (6.0f), cy, true);
+                juce::ColourGradient gr (c.withAlpha (0.4877f * 0.9f * peakAlpha), reflX, cy, c.withAlpha (0.0f), reflX + M (6.0f), cy, true);
                 gr.addColour (0.45, c.withAlpha (0.25f * peakAlpha));
                 g.setGradientFill (gr);
-                g.fillEllipse (reflX - D (6.0f), cy - D (15.0f), D (12.0f), D (30.0f));
+                g.fillEllipse (reflX - M (6.0f), cy - M (15.0f), M (12.0f), M (30.0f));
             }
             // LEDs eteintes
             for (int i = 0; i < N; ++i)
             {
-                if (i < lit || (showPk && i == pk)) continue;
+                if (i < lit || (showPk && i == pk) || (clip && i >= N - 3)) continue;
                 g.setColour (ledColour (i).withMultipliedBrightness (0.10f).withAlpha (0.9f));
                 g.fillRect (ledRect (i));
             }
@@ -1134,7 +1147,7 @@ public:
                 const auto top = ledRect (lit - 1).getY();
                 for (int pass = 0; pass < 2; ++pass)
                 {
-                    const float e = pass == 0 ? D (4.0f) : D (2.0f);
+                    const float e = pass == 0 ? M (4.0f) : M (2.0f);
                     g.setColour (ledColour (lit / 2).withAlpha (0.12f));
                     g.fillRoundedRectangle (r.getX() - e, top - e, r.getWidth() + 2 * e, r.getBottom() - top + 2 * e, e);
                 }
@@ -1157,40 +1170,38 @@ public:
             };
             for (int i = 0; i < lit; ++i) drawLed (i, 1.0f, false);
             if (showPk) drawLed (pk, peakAlpha, true);
-            // voyant d'ecretage
-            const auto led = juce::Rectangle<float> (clipLed.x - D (7.5f), clipLed.y - D (7.5f), D (15.0f), D (15.0f));
+            // ecretage : les 3 LEDs du haut en rouge vif
             if (clip)
-            {
-                g.setColour (juce::Colour (0xffff2a1a).withAlpha (0.35f)); g.fillEllipse (led.expanded (D (5.0f)));
-                juce::ColourGradient lens (juce::Colour (0xffffb0a0), led.getCentreX() - D (2.0f), led.getCentreY() - D (2.5f),
-                                           juce::Colour (0xffc01008), led.getRight(), led.getBottom(), true);
-                g.setGradientFill (lens); g.fillEllipse (led);
-            }
+                for (int i = N - 3; i < N; ++i)
+                {
+                    const auto lr = ledRect (i);
+                    g.setColour (juce::Colour (0xffff2a1a).withAlpha (0.35f)); g.fillRect (lr.expanded (M (1.5f)));
+                    g.setColour (juce::Colour (0xffff2a1a)); g.fillRect (lr);
+                    g.setColour (juce::Colour (0xffffd0c0).withAlpha (0.55f)); g.fillRect (lr.withSizeKeepingCentre (lr.getWidth() * 0.6f, lr.getHeight() * 0.4f));
+                }
         };
-        meter (rMeterIn, kReflXIn, shownIn, peakIn, peakAlphaIn, clipIn, kClipIn);
-        meter (rMeterOut, kReflXOut, shownOut, peakOut, peakAlphaOut, clipOut, kClipOut);
+        meter (rMeterIn, kReflXIn, shownIn, peakIn, peakAlphaIn, clipIn);
+        meter (rMeterOut, kReflXOut, shownOut, peakOut, peakAlphaOut, clipOut);
 
         // afficheur d'etat : message, sinon CPU / latence
-        const auto r = rStatusText.reduced (8, 5);
         const auto st = statusText();
         if (st.isNotEmpty())
         {
             setTextCol (g, kSilk);
-            g.setFont (fSemi (10.5f));
-            screenText (g, st, r, juce::Justification::centred, true);
+            g.setFont (emSemi (D (40.0f)));
+            screenText (g, st, rStatusText, juce::Justification::centred, true);
         }
         else
         {
+            static const juce::Font fs = emMedium (D (38.0f));
             setTextCol (g, kSilk.withAlpha (0.92f));
-            g.setFont (fMedium (9.3f));
             const int lat = proc.getReportedLatency();
             const double ms = 1000.0 * lat / juce::jmax (1.0, proc.getHostRate());
             juce::String k = juce::String (proc.getHostRate() / 1000.0, 1); if (k.endsWith (".0")) k = k.dropLastCharacters (2);
-            const float cx = D (1467.0f);
-            screenText (g, "CPU " + juce::String (shownCpu, 1) + " %" + dotSep() + k + " kHz" + dotSep() + "AA " + juce::String (osShown) + "x",
-                        juce::Rectangle<float> (cx - 90.0f, D (172.2f) - 8.5f, 180.0f, 11.0f), juce::Justification::centredBottom);
-            screenText (g, "LATENCY " + (lat == 0 ? juce::String ("0 (none added)") : juce::String (lat) + " smp  " + juce::String (ms, 2) + " ms"),
-                        juce::Rectangle<float> (cx - 90.0f, D (246.0f) - 8.5f, 180.0f, 11.0f), juce::Justification::centredBottom);
+            lcdLine (g, "CPU " + juce::String (shownCpu, 1) + " %" + dotSep() + k + " kHz" + dotSep() + "AA " + juce::String (osShown) + "x",
+                     kStatusCx, 352.0f, 820.0f, fs, juce::Justification::horizontallyCentred);
+            lcdLine (g, "LATENCY " + (lat == 0 ? juce::String ("0 (none added)") : juce::String (lat) + " smp  " + juce::String (ms, 2) + " ms"),
+                     kStatusCx, 440.0f, 820.0f, fs, juce::Justification::horizontallyCentred);
         }
     }
 
@@ -1204,11 +1215,11 @@ public:
             for (int d = -4; d <= 4; ++d)
             {
                 const float a = juce::degreesToRadians (30.0f * (float) d);
-                const float x = kKnobX[i] + D (90.5f) * std::sin (a), y = kKnobY - D (90.5f) * std::cos (a);
-                const float r = D (3.7f);
-                g.setColour (juce::Colours::black.withAlpha (0.40f));
-                g.fillEllipse (x - r + 0.3f, y - r + 0.5f, 2 * r, 2 * r);
-                g.setColour (kSilk);
+                const float x = kKnobX[i] + D (kDotR) * std::sin (a), y = kKnobY - D (kDotR) * std::cos (a);
+                const float r = D (kDotSize);
+                g.setColour (juce::Colours::black.withAlpha (0.45f));
+                g.fillEllipse (x - r + D (1.6f), y - r + D (1.6f), 2 * r, 2 * r);
+                g.setColour (kSilk.withAlpha (0.97f));
                 g.fillEllipse (x - r, y - r, 2 * r, 2 * r);
             }
     }
@@ -1452,6 +1463,7 @@ private:
             refreshInfos();
             askRepaint (toInt (rRow[0]));
             for (int i = 0; i < 6; ++i) askRepaint (valueArea (i));
+            repaintDiodes();
         }
         for (int s = 0; s < 1; ++s)
             if (errUntil[s] != 0 && now > errUntil[s]) { errUntil[s] = 0; askRepaint (toInt (rRow[s])); }
@@ -1645,7 +1657,7 @@ void AmpireEditor::openColourPicker (juce::Component* near, int which)
 {
     const float s = (float) getWidth() / (float) kWin;
     const juce::Colour start = which == 1 ? content->meterMain : which == 2 ? content->meterSat : which == 3 ? content->ledColour : juce::Colour (proc.accentColour.load());
-    const char* title = which == 1 ? "Meter LED colour" : which == 2 ? "Saturation LED colour (top 3)" : which == 3 ? "POWER LED colour" : "Screen text colour";
+    const char* title = which == 1 ? "Meter LED colour" : which == 2 ? "Saturation LED colour (top 3)" : which == 3 ? "LED colour (POWER / STACK)" : "Screen text colour";
     auto picker = std::make_unique<WigaColourPicker> (title, start, juce::jlimit (0.85f, 1.6f, s), JucePlugin_Name);
     juce::Component::SafePointer<AmpireEditor> sp (this);
     auto apply = [sp, which] (juce::Colour c)
@@ -1749,6 +1761,7 @@ void AmpireEditor::applyStack()
     {
         b.available = avail; b.on = proc.stackOn.load(); b.led = content->ledColour;
         b.repaint();
+        content->repaintDiodes();
     }
     const int w = getWidth();
     if (want && stackView == 0)
@@ -1779,6 +1792,7 @@ void AmpireEditor::previewStackButton (bool available, bool on)
     stackPreview = true;
     content->stackBtn.available = available; content->stackBtn.on = on; content->stackBtn.led = content->ledColour;
     content->stackBtn.repaint();
+    content->repaintDiodes();
 }
 
 int AmpireEditor::getScaleIndex() const
@@ -1958,9 +1972,9 @@ static void showGearMenu (juce::Component& c)
         const char* glowNames[4] = { "Off", "Low", "Medium (design)", "High" };
         const float glowVals[4] = { 0.0f, 0.5f, 1.0f, 1.6f };
         juce::PopupMenu colM, lgM;
-        colM.addItem (76, "POWER LED colour...");
+        colM.addItem (76, "LED colour (POWER / STACK)...");
         for (int i = 0; i < 4; ++i) lgM.addItem (77 + i, glowNames[i], true, std::abs (lg - glowVals[i]) < 0.01f);
-        colM.addSubMenu ("POWER LED glow", lgM);
+        colM.addSubMenu ("LED glow", lgM);
         colM.addSeparator();
         colM.addItem (70, "Meter LED colour...");
         colM.addItem (71, "Saturation LED colour (top 3)...");
