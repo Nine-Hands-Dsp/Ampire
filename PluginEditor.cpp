@@ -1166,7 +1166,7 @@ public:
                     wsum += w;
                     if (j < lit) acc += w * kMeterVis[j];
                 }
-                const float v = juce::jmin (1.0f, 7.0f * 0.9f * acc / wsum) * 0.4877f;
+                const float v = juce::jmin (1.0f, 7.0f * 0.9f * acc / wsum) * 0.4877f * 0.5f;   // opacite des reflets -50 % (nov. 2026)
                 if (v < 0.01f) continue;
                 const auto c = ledColour (i);
                 const float cy = ledRect (i).getCentreY();
@@ -1178,7 +1178,7 @@ public:
             {
                 const auto c = ledColour (pk);
                 const float cy = ledRect (pk).getCentreY();
-                juce::ColourGradient gr (c.withAlpha (0.4877f * 0.9f * peakAlpha), reflX, cy, c.withAlpha (0.0f), reflX + M (6.0f), cy, true);
+                juce::ColourGradient gr (c.withAlpha (0.4877f * 0.5f * 0.9f * peakAlpha), reflX, cy, c.withAlpha (0.0f), reflX + M (6.0f), cy, true);
                 gr.addColour (0.45, c.withAlpha (0.25f * peakAlpha));
                 g.setGradientFill (gr);
                 g.fillEllipse (reflX - M (6.0f), cy - M (15.0f), M (12.0f), M (30.0f));
