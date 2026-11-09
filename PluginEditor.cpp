@@ -72,7 +72,7 @@ namespace
     constexpr float kTitleBase = 703.52f, kValueBase = 757.0f, kScaleBase = 1088.0f;
     // diodes et inverseurs (STACK a gauche, POWER a droite)
     const juce::Point<float> kDiodeStack (D (2954.0f), D (783.43f)), kDiodePower (D (3174.0f), D (783.43f));
-    const float kDiodeSprite = D (280.0f * 0.75f);   // diodes reduites de 25 % (le trou du fond suit : tools/design_v005.py)
+    const float kDiodeSprite = D (280.0f);
     const juce::Point<float> kSwStack (D (2954.0f), D (1029.71f)), kSwPower (D (3174.0f), D (1029.71f));
     const float kToggleSprite = D (252.0f);
     juce::Rectangle<float> diodeRect (juce::Point<float> c) { return { c.x - kDiodeSprite * 0.5f, c.y - kDiodeSprite * 0.5f, kDiodeSprite, kDiodeSprite }; }

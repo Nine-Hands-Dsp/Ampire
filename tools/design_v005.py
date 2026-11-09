@@ -289,20 +289,19 @@ for x in KX: paste(img, L_center, x, KY)
 dio = Image.open(F["diode"]).convert("RGBA").crop((28, 28, 122, 122)).resize((68, 68), Image.LANCZOS)
 dio = np.asarray(dio, dtype=f32) / 255.0
 DIO = [(2954, 783.43), (3174, 783.43)]
-DS = 0.75                                               # diodes reduites de 25 % (nov. 2026) : trou et liseré a l'echelle
 for cx, cy in DIO:
     sl = (slice(int(cy - 60), int(cy + 60)), slice(int(cx - 60), int(cx + 60)))
     X, Y = xx[sl], yy[sl]; sub = img[sl]
-    d = -circ_sdf(cx, cy, 38.5 * DS, X, Y)                     # trou
+    d = -circ_sdf(cx, cy, 38.5, X, Y)                     # trou
     holem = np.clip(d + 0.5, 0, 1)
-    gx_, gy_ = grad(d); uu = np.clip(d / (5 * DS), 0, 1)
-    s = np.where(d < 5 * DS, np.sin(np.pi * uu) * 1.4, 0)
+    gx_, gy_ = grad(d); uu = np.clip(d / 5, 0, 1)
+    s = np.where(d < 5, np.sin(np.pi * uu) * 1.4, 0)
     nx_, ny_ = s * gx_, s * gy_; nn_ = np.sqrt(nx_ ** 2 + ny_ ** 2 + 1)
     f_, sp_ = shade(nx_ / nn_, ny_ / nn_, 1 / nn_, ks=0.5, p=12)
     bez = np.array([0.06, 0.06, 0.065]) * f_[..., None] + sp_[..., None] * 0.6
     sub[..., :3] = sub[..., :3] * (1 - holem[..., None]) + bez * holem[..., None]
-    outside = (d < 4.5 * DS).astype(f32)
-    sub[..., :3] *= (1 - 0.6 * blur(shift(outside, 3 * DS, 3 * DS), 2.5 * DS) * np.clip(d - 3 * DS, 0, 1))[..., None]
+    outside = (d < 4.5).astype(f32)
+    sub[..., :3] *= (1 - 0.6 * blur(shift(outside, 3, 3), 2.5) * np.clip(d - 3, 0, 1))[..., None]
 def diode_sprite(on):
     S = 280; c = S / 2
     sp = np.zeros((S, S, 4), f32)
