@@ -184,8 +184,11 @@ public:
 };
 
 // ---- potard : centre fixe (dans le fond), couronne crantee qui tourne, reflet fixe par-dessus, repere blanc qui tourne
-//      image composee mise en cache (recalculee seulement quand la valeur, l'etat ou la resolution changent)
-class Knob : public ParamControl
+//      image composee mise en cache (recalculee seulement quand la valeur, l'etat ou la resolution changent).
+//      La couronne a 96 crans (un tous les 3,75 degres) : tournee par a-coups de 2 a 3,7 degres (glisser la souris), les
+//      crans semblaient reculer (effet stroboscopique, « roue de diligence »). Comme une vraie couronne qui tourne, elle
+//      est dessinee avec un flou de mouvement sur l'angle parcouru depuis l'image precedente, puis redevient nette a l'arret.
+class Knob : public ParamControl, private juce::Timer
 {
 public:
     Knob (AmpireProcessor& p, const char* id, int learn) : ParamControl (p, id, learn) {}
@@ -197,24 +200,67 @@ public:
         const float ps = juce::jmax (1.0f, g.getInternalContext().getPhysicalPixelScaleFactor());
         const int w = juce::jmax (1, (int) std::ceil ((float) getWidth() * ps)), h = juce::jmax (1, (int) std::ceil ((float) getHeight() * ps));
         const float n = norm();
-        if (! cache.isValid() || cache.getWidth() != w || cache.getHeight() != h || n != cacheNorm || dimmed != cacheDim)
+        if (! cache.isValid() || cache.getWidth() != w || cache.getHeight() != h || n != cacheNorm || dimmed != cacheDim || needSharp)
         {
+            const auto& art = Art::get();
+            const float ang = juce::degreesToRadians (-kSweep + 2.0f * kSweep * n);
+            const bool sameSize = cache.isValid() && cache.getWidth() == w && cache.getHeight() == h;
+            const float from = (sameSize && ! needSharp && std::isfinite (cacheAng)) ? cacheAng : ang;
+            needSharp = false;
             cache = juce::Image (juce::Image::ARGB, w, h, true);
             juce::Graphics cg (cache);
             cg.setImageResamplingQuality (juce::Graphics::highResamplingQuality);
-            const auto& art = Art::get();
-            const float ang = juce::degreesToRadians (-kSweep + 2.0f * kSweep * n);
             const float k = (float) w * (280.0f / kKnobBox) / (float) art.crown.getWidth();
             auto place = [&] (const juce::Image& im, float a)
             {
                 return juce::AffineTransform::translation (-0.5f * (float) im.getWidth(), -0.5f * (float) im.getHeight())
                            .rotated (a).scaled (k).translated (0.5f * (float) w, 0.5f * (float) h);
             };
-            cg.drawImageTransformed (art.crown, place (art.crown, ang));
+            // couronne : nette, ou moyenne de positions reparties sur l'angle parcouru (flou de mouvement)
+            const float step = juce::degreesToRadians (0.6f);
+            const int sub = juce::jlimit (1, 16, (int) std::ceil (std::abs (ang - from) / step));
+            if (sub <= 1) cg.drawImageTransformed (art.crown, place (art.crown, ang));
+            else
+            {
+                std::vector<float> acc ((size_t) w * (size_t) h * 4, 0.0f);
+                juce::Image tmp (juce::Image::ARGB, w, h, true);
+                for (int i = 0; i < sub; ++i)
+                {
+                    tmp.clear (tmp.getBounds());
+                    {
+                        juce::Graphics tg (tmp);
+                        tg.setImageResamplingQuality (juce::Graphics::highResamplingQuality);
+                        tg.drawImageTransformed (art.crown, place (art.crown, from + (ang - from) * ((float) i + 1.0f) / (float) sub));
+                    }
+                    const juce::Image::BitmapData bd (tmp, juce::Image::BitmapData::readOnly);
+                    for (int y = 0; y < h; ++y)
+                        for (int x = 0; x < w; ++x)
+                        {
+                            const auto* px = reinterpret_cast<const juce::PixelARGB*> (bd.getPixelPointer (x, y));
+                            float* a4 = &acc[((size_t) y * (size_t) w + (size_t) x) * 4];
+                            a4[0] += px->getAlpha(); a4[1] += px->getRed(); a4[2] += px->getGreen(); a4[3] += px->getBlue();
+                        }
+                }
+                juce::Image blurred (juce::Image::ARGB, w, h, true);
+                {
+                    const juce::Image::BitmapData bd (blurred, juce::Image::BitmapData::writeOnly);
+                    const float inv = 1.0f / (float) sub;
+                    for (int y = 0; y < h; ++y)
+                        for (int x = 0; x < w; ++x)
+                        {
+                            const float* a4 = &acc[((size_t) y * (size_t) w + (size_t) x) * 4];
+                            auto* px = reinterpret_cast<juce::PixelARGB*> (bd.getPixelPointer (x, y));
+                            px->setARGB ((juce::uint8) std::lround (a4[0] * inv), (juce::uint8) std::lround (a4[1] * inv),
+                                         (juce::uint8) std::lround (a4[2] * inv), (juce::uint8) std::lround (a4[3] * inv));   // premultiplie
+                        }
+                }
+                cg.drawImageAt (blurred, 0, 0);
+                startTimer (70);                   // redevient nette quand le potard s'arrete
+            }
             cg.drawImageTransformed (art.reflect, place (art.reflect, 0.0f));
             cg.setOpacity (dimmed ? 0.35f : 1.0f);
             cg.drawImageTransformed (art.indicator, place (art.indicator, ang));
-            cacheNorm = n; cacheDim = dimmed;
+            cacheNorm = n; cacheDim = dimmed; cacheAng = ang;
         }
         g.drawImageTransformed (cache, juce::AffineTransform::scale ((float) getWidth() / (float) w, (float) getHeight() / (float) h));
         if (LearnBlink::shown (proc, learnIdx)) LearnBlink::draw (g, getLocalBounds().toFloat().reduced (2.0f), getWidth() * 0.5f);
@@ -246,8 +292,9 @@ private:
     bool dragging = false;
     float startNorm = 0.0f;
     juce::Image cache;
-    float cacheNorm = -1.0f;
-    bool cacheDim = false;
+    float cacheNorm = -1.0f, cacheAng = std::numeric_limits<float>::quiet_NaN();
+    bool cacheDim = false, needSharp = false;
+    void timerCallback() override { stopTimer(); needSharp = true; repaint(); }
 };
 
 // ---- inverseur a levier (nickel), deux positions : haut = valeur 0, bas = valeur 1
