@@ -47,3 +47,48 @@ jobs:
         with:
           name: Ampire-macOS-VST3-AU
           path: Ampire-macOS.zip
+
+  # Publie la version (tag v<VERSION de CMakeLists>) en Release GitHub, fichiers a nom fixe :
+  # les boutons du README (.../releases/latest/download/Ampire-VST3-<OS>.zip) suivent chaque version.
+  release:
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    needs: [windows, macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - name: Version
+        id: v
+        run: echo "version=$(python3 -c "import re;print(re.search(r'^project\s*\(\s*\w+[^)]*?VERSION\s+([0-9.]+)',open('CMakeLists.txt').read(),re.M).group(1))")" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v4
+        with:
+          name: Ampire-Windows-VST3
+          path: dist/win
+      - uses: actions/download-artifact@v4
+        with:
+          name: Ampire-macOS-VST3-AU
+          path: dist/mac
+      - name: Archives
+        run: |
+          pack() {
+            src="$1"; out="$GITHUB_WORKSPACE/$2"; wrap="$3"
+            n=$(ls -A "$src" | wc -l); z=$(ls "$src"/*.zip 2>/dev/null | head -1)
+            if [ "$n" = 1 ] && [ -n "$z" ]; then cp "$z" "$out"
+            elif [ -n "$wrap" ]; then mkdir -p "pk/$wrap" && cp -a "$src"/. "pk/$wrap/" && (cd pk && zip -r -q -y "$out" "$wrap") && rm -rf pk
+            else (cd "$src" && zip -r -q -y "$out" .); fi
+          }
+          pack dist/win "Ampire-VST3-Windows.zip" ""
+          pack dist/mac "Ampire-VST3-macOS.zip" ""
+          ls -l *.zip
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="v${{ steps.v.outputs.version }}"
+          FILES="Ampire-VST3-Windows.zip Ampire-VST3-macOS.zip"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" $FILES --clobber
+          else
+            gh release create "$TAG" $FILES --target "$GITHUB_SHA" --latest --title "Ampire $TAG" --notes "Installation : voir le README (Windows : C:\Program Files\Common Files\VST3 ; macOS : ~/Library/Audio/Plug-Ins/VST3)."
+          fi
