@@ -69,7 +69,10 @@ juce_add_binary_data(AmpireAssets SOURCES
   assets/switch_up.png
   assets/switch_down.png
   assets/diode_on.png
-  assets/diode_off.png)
+  assets/diode_off.png
+  assets/Poppins-Regular.ttf
+  assets/Poppins-Medium.ttf
+  assets/Poppins-Bold.ttf)
 
 if(APPLE)
   set(AMPIRE_FORMATS VST3 AU)

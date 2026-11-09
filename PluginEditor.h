@@ -33,6 +33,7 @@ public:
     void toggleStack();
     void updateStack();                  // appele 2 fois par seconde : Impulse present ? vue toujours valide ?
     void previewStackButton (bool available, bool on);   // outil : apparence du bouton
+    juce::LookAndFeel* getMenuLook() { return menuLook.get(); }   // menus au design d'Octopus (MenuStyle.h)
 
 private:
     friend class AmpireContent;
@@ -49,6 +50,7 @@ private:
     int impulseHeight (int w) const;
     juce::uint32 lastRendererCheck = 0;
     AmpireProcessor& proc;
+    std::unique_ptr<juce::LookAndFeel> menuLook;      // detruite apres le contenu
     std::unique_ptr<AmpireContent> content;
     std::unique_ptr<juce::FileChooser> folderChooser;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AmpireEditor)

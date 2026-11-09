@@ -2,6 +2,7 @@
 //   AmpireTool render <out.png> <scale> [namA] [namB] [-] [instrument 0/1] [library 0/1]
 //   AmpireTool process <in.wav|sine> <out.wav> <rate> <block> <namA> [namB] [series 0/1] [os 0/1/2] [size 0/1]
 //   AmpireTool bench <nam> <rate> <block> <os> <size>
+#include "../MenuStyle.h"
 #include "../PluginProcessor.h"
 #include "../PluginEditor.h"
 #include "../ColourPicker.h"
@@ -60,6 +61,36 @@ int main (int argc, char** argv)
         return 0;
     }
 
+    if (mode == "menu")         // AmpireTool menu <out.png> : apercu du style des menus (MenuStyle.h)
+    {
+        MenuStyle::MenuLnf lf;
+        const char* items[] = { "Presets", "-", "Anti-aliasing (oversampling, 0 latency)", "Output level", "Input calibration", "Input channel",
+                                "*Tone stack (BASS / MIDDLE / TREBLE)", "-", "Colours & glow", "Capture folder", "Low cut", "High cut", "-", "MIDI", "Plugin size" };
+        const int W = 380, n = (int) (sizeof (items) / sizeof (items[0]));
+        int H = 14 + 52 + 11;
+        for (auto* it : items) H += it[0] == '-' ? 11 : 32;
+        juce::Image img (juce::Image::ARGB, W * 2, H * 2, true);
+        juce::Graphics g (img);
+        g.addTransform (juce::AffineTransform::scale (2.0f));
+        lf.drawPopupMenuBackground (g, W, H);
+        MenuStyle::Header hd (MenuStyle::fonts(), MenuStyle::Badge::ofUi (MenuStyle::icoParams), "Ampire",
+                              juce::String::fromUTF8 ("NINE HANDS | DSP  \xc2\xb7  v" JucePlugin_VersionString));
+        hd.setBounds (7, 7, W - 14, 52);
+        { juce::Graphics::ScopedSaveState ss (g); g.setOrigin (7, 7); hd.paint (g); }
+        int y = 7 + 52;
+        lf.drawPopupMenuItem (g, { 7, y, W - 14, 11 }, true, true, false, false, false, {}, {}, nullptr, nullptr); y += 11;
+        for (int i = 0; i < n; ++i)
+        {
+            const juce::String t (items[i]);
+            if (t == "-") { lf.drawPopupMenuItem (g, { 7, y, W - 14, 11 }, true, true, false, false, false, {}, {}, nullptr, nullptr); y += 11; continue; }
+            const bool tick = t.startsWith ("*"), sub = ! tick && t != "Presets" ? (i != 6) : true;
+            lf.drawPopupMenuItem (g, { 7, y, W - 14, 32 }, false, true, i == 8, tick, sub, tick ? t.substring (1) : t, {}, nullptr, nullptr);
+            y += 32;
+        }
+        juce::File out (arg (2)); out.deleteFile();
+        juce::FileOutputStream os (out); juce::PNGImageFormat().writeImageToStream (img, os);
+        return 0;
+    }
     if (mode == "reopen")       // AmpireTool reopen <nam> : reouverture de projet (setState puis prepareToPlay aussitot)
     {
         juce::MemoryBlock state;

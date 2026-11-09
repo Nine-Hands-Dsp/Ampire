@@ -3,6 +3,7 @@
 #include <BinaryData.h>
 #include "WigaWindowSize.h"
 #include "ColourPicker.h"
+#include "MenuStyle.h"
 #include <complex>
 
 // ============================================================================
@@ -145,6 +146,7 @@ namespace
 }
 
 static void showContextMenu (juce::Component& c, int learnIdx);
+static juce::LookAndFeel* menuLookFor (juce::Component* c);
 static void showGearMenu (juce::Component& c);
 
 // ============================================================================ commandes de base
@@ -1325,7 +1327,7 @@ private:
         m.addItem (7, "Clear", inf.loaded);
         if (inf.loaded) { m.addSeparator(); m.addItem (8, inf.meta.formatLine(), false); }
         juce::Component::SafePointer<AmpireContent> sp (this);
-        m.showMenuAsync (juce::PopupMenu::Options(), [sp, s, path = inf.meta.path] (int r)
+        MenuStyle::styled (m, menuLookFor (this)).showMenuAsync (juce::PopupMenu::Options(), [sp, s, path = inf.meta.path] (int r)
         {
             if (sp == nullptr) return;
             if (r == 1) sp->openLibrary (s);
@@ -1353,7 +1355,7 @@ private:
         m.addItem (5, "Delete \"" + cur + "\"", cur.isNotEmpty());
         m.addItem (6, "Open presets folder");
         juce::Component::SafePointer<AmpireContent> sp (this);
-        m.showMenuAsync (near != nullptr ? juce::PopupMenu::Options().withTargetComponent (near) : juce::PopupMenu::Options(), [sp, names, cur] (int r)
+        MenuStyle::styled (m, menuLookFor (this)).showMenuAsync (juce::PopupMenu::Options(), [sp, names, cur] (int r)
         {
             if (sp == nullptr) return;
             auto& p = sp->proc;
@@ -1571,6 +1573,8 @@ private:
 AmpireEditor::AmpireEditor (AmpireProcessor& p) : AudioProcessorEditor (&p), proc (p)
 {
     setOpaque (true);
+    menuLook = std::make_unique<MenuStyle::MenuLnf>();
+    setLookAndFeel (menuLook.get());               // menus clic droit (et menus des champs de texte) au design d'Octopus
     content = std::make_unique<AmpireContent> (proc);
     addAndMakeVisible (*content);
     setResizable (true, true);
@@ -1584,6 +1588,8 @@ AmpireEditor::AmpireEditor (AmpireProcessor& p) : AudioProcessorEditor (&p), pro
 
 AmpireEditor::~AmpireEditor()
 {
+    juce::PopupMenu::dismissAllActiveMenus();
+    setLookAndFeel (nullptr);
     if (stackView != 0)
         if (auto* api = proc.stackApi()) api->destroyView (stackView);
     stackView = 0;
@@ -1817,6 +1823,14 @@ void AmpireEditor::applyScaleIndex (int idx)
 }
 
 // ============================================================================ menus clic droit
+static juce::LookAndFeel* menuLookFor (juce::Component* c)
+{
+    if (c == nullptr) return nullptr;
+    if (auto* ed = dynamic_cast<AmpireEditor*> (c)) return ed->getMenuLook();
+    if (auto* ed = c->findParentComponentOfClass<AmpireEditor>()) return ed->getMenuLook();
+    return nullptr;
+}
+
 static AmpireProcessor* procFor (juce::Component* c)
 {
     if (c == nullptr) return nullptr;
@@ -1908,7 +1922,7 @@ static void showContextMenu (juce::Component& c, int learnIdx)
         m.addSubMenu ("MIDI", midi);
     }
     juce::Component::SafePointer<juce::Component> sp (&c);
-    m.showMenuAsync (juce::PopupMenu::Options(), [sp, p] (int r)
+    MenuStyle::styled (m, menuLookFor (&c)).showMenuAsync (juce::PopupMenu::Options(), [sp, p] (int r)
     {
         if (sp == nullptr) return;
         if (r == 2) { if (auto* ed = sp->findParentComponentOfClass<AmpireEditor>()) ed->openColourPicker (sp.getComponent()); return; }
@@ -1926,7 +1940,7 @@ static void showGearMenu (juce::Component& c)
     const int highs[] = { 20000, 12000, 10000, 8000, 7000, 6000, 5000 };
 
     juce::PopupMenu m, aaM, outM, inM, calM, lowM, highM, sizeM, midi, folderM;
-    m.addSectionHeader ("Ampire " JucePlugin_VersionString " - NINE HANDS | DSP");
+    MenuStyle::header (m, MenuStyle::icoParams, "Ampire", juce::String::fromUTF8 ("NINE HANDS | DSP  \xc2\xb7  v" JucePlugin_VersionString));
     {
         juce::PopupMenu presetM;
         const auto names = p->getPresetNames();
@@ -2002,7 +2016,7 @@ static void showGearMenu (juce::Component& c)
     addSizeItems (sizeM, c);
     m.addSubMenu ("Plugin size", sizeM);
     juce::Component::SafePointer<juce::Component> sp (&c);
-    m.showMenuAsync (juce::PopupMenu::Options(), [sp, p, lows, highs, levels] (int r)
+    MenuStyle::styled (m, menuLookFor (&c)).showMenuAsync (juce::PopupMenu::Options(), [sp, p, lows, highs, levels] (int r)
     {
         if (sp == nullptr) return;
         auto set = [p] (const char* id, float v) { if (auto* prm = p->apvts.getParameter (id)) prm->setValueNotifyingHost (prm->convertTo0to1 (v)); };

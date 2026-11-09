@@ -27,7 +27,7 @@ Neural Amp Modeler capture loader (A1 and A2) for guitar and bass — VST3 (Wind
 - MIDI Learn sur tous les potards et sur précédente / suivante (aucun CC assigné par défaut).
 - Tailles de fenêtre 60 / 75 / 100 %.
 - Diodes POWER / STACK : couleur et glow réglables (clic droit → Colours & glow).
-- Tous les réglages (presets, couleurs, anti-repliement, niveaux, MIDI, taille) : menu du clic droit, n'importe où sur l'interface.
+- Tous les réglages (presets, couleurs, anti-repliement, niveaux, MIDI, taille) : menu du clic droit, n'importe où sur l'interface, au même design que les menus d'Octopus.
 - Interface « anti-gel v2 » : rendu logiciel, aucun calcul lourd dans `paint()`, caches reconstruits par le timer, chien de garde de redessin.
 
 ## Installation
@@ -56,6 +56,6 @@ Hors ligne : `-DJUCE_LOCAL_DIR=<juce>` et `-DFETCHCONTENT_SOURCE_DIR_NAMCORE=<cl
 - [NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpModelerCore) — Steven Atkinson, MIT (pile de tonalité reprise du plugin NAM, MIT).
 - Suréchantillonneur et mesure de latence (`thirdparty/tone3000`) — TONE3000, MIT, voir `thirdparty/tone3000/LICENSE`.
 - [JUCE](https://juce.com) 8.0.15.
-- Police Inter — SIL Open Font License.
+- Polices Inter (interface) et Poppins (menus) — SIL Open Font License.
 
 © NINE HANDS | DSP
