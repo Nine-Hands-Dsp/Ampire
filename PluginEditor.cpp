@@ -1692,8 +1692,14 @@ void AmpireEditor::openColourPicker (juce::Component* near, int which)
         else if (which == 2) AmpireSettings::setColourAttr (JucePlugin_Name, "saturationColour", def);
         else if (which == 3) AmpireSettings::setColourAttr (JucePlugin_Name, "ledColour", def);
     };
-    auto area = near != nullptr ? getLocalArea (near, near->getLocalBounds()) : getLocalBounds().withSizeKeepingCentre (10, 10);
-    auto* layer = new WigaPickerLayer (std::move (picker), area, getLocalBounds());
+    // en mode stack, la vue d'Impulse (fenetre enfant native, toujours au-dessus) occupe le bas de la fenetre :
+    // le nuancier et son calque restent dans la partie Ampire, sinon ils seraient caches dessous
+    const auto zone = stackView != 0 ? getLocalBounds().withHeight (juce::jmin (getHeight(), ampireHeight (getWidth())))
+                                     : getLocalBounds();
+    auto area = near != nullptr ? getLocalArea (near, near->getLocalBounds()) : zone.withSizeKeepingCentre (10, 10);
+    area = area.getIntersection (zone);
+    if (area.isEmpty()) area = zone.withSizeKeepingCentre (10, 10);
+    auto* layer = new WigaPickerLayer (std::move (picker), area, zone);
     addAndMakeVisible (layer);
     layer->toFront (true);
 }
