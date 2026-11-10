@@ -8,6 +8,8 @@ Neural Amp Modeler capture loader (A1 and A2) for guitar and bass — VST3 (Wind
   <a href="https://github.com/Nine-Hands-Dsp/Ampire/releases/latest/download/Ampire-VST3-macOS.zip"><img alt="Télécharger pour macOS" src="https://img.shields.io/badge/%E2%AC%87%20T%C3%A9l%C3%A9charger-macOS-111111?style=for-the-badge&logo=apple&logoColor=white"></a>
   <br>
   <a href="https://github.com/Nine-Hands-Dsp/Ampire/releases/latest"><img alt="Dernière version" src="https://img.shields.io/github/v/release/Nine-Hands-Dsp/Ampire?label=derni%C3%A8re%20version&color=919496"></a>
+  <br>
+  <a href="https://github.com/Nine-Hands-Dsp/Ampire/raw/main/docs/Ampire_Notice_FR_v1.0.0.pdf"><img alt="Notice (PDF)" src="https://img.shields.io/badge/%F0%9F%93%96%20Notice-PDF%20fran%C3%A7ais-E8701A?style=for-the-badge"></a>
 </p>
 
 ## Fonctions
@@ -49,7 +51,7 @@ cmake --build build --config Release --target Ampire_VST3
 JUCE 8.0.15 et NeuralAmpModelerCore v0.6.0 (avec Eigen et AudioDSPTools) sont téléchargés par CMake.
 Hors ligne : `-DJUCE_LOCAL_DIR=<juce>` et `-DFETCHCONTENT_SOURCE_DIR_NAMCORE=<clone NAM Core>`.
 
-`tools/` (Linux, option `-DAMPIRE_TOOLS=ON`) : captures de l'interface, rendu audio hors ligne et banc CPU ; `tools/design_v005.py` calcule les images de l'interface (`assets/`) d'après la maquette `assets/design/v005/Ampire_Design_Mockup_v005.svg` (textes et icônes vectoriels dans le même dossier).
+`tools/` (Linux, option `-DAMPIRE_TOOLS=ON`) : captures de l'interface, rendu audio hors ligne et banc CPU ; `tools/manual.py` fabrique la notice (`docs/`) à partir des captures de l'interface (`AmpireTool render` / `menu`). `tools/design_v005.py` calcule les images de l'interface (`assets/`) d'après la maquette `assets/design/v005/Ampire_Design_Mockup_v005.svg` (textes et icônes vectoriels dans le même dossier).
 
 ## Crédits et licences
 
