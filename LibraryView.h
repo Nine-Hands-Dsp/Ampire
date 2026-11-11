@@ -819,7 +819,11 @@ private:
             if (k == 1 && lines.size() > 2) s = fitText (s + " " + lines[2], f, kCardW - 28);
             text (g, fitText (s, f, kCardW - 28), cx + 14, cy + 135 + k * 22, f, TXT);
         }
-        text (g, t.gearLabel(), cx + 14, cy + 186, pop (0, 13), DIM);
+        {
+            const auto jb = client->getJob (t.id);
+            if (jb.failed) text (g, fitText (jb.error, pop (0, 12), kCardW - 80), cx + 14, cy + 186, pop (0, 12), RED);
+            else text (g, t.gearLabel(), cx + 14, cy + 186, pop (0, 13), DIM);
+        }
         formatBadge (g, cx + kCardW - 56, cy + 186, t.formatBadge());
         // auteur
         const auto av = client->getImage (t.avatar);

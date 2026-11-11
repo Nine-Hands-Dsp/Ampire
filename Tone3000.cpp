@@ -743,6 +743,7 @@ void Client::runSync (Tone t)
     auto fail = [this, &t] (const juce::String& e)
     {
         { const juce::ScopedLock sl (lock); Job j; j.failed = true; j.error = e; jobs.set (t.id, j); }
+        logLine ("sync " + t.id + " (" + t.title + ") : " + e);
         changed();
     };
     const auto dir = getRoot();
@@ -751,16 +752,29 @@ void Client::runSync (Tone t)
     // tone a jour + liste des captures
     const auto tv = apiGet ("/tones/" + t.id);
     if (tv.isObject()) t = Tone::fromVar (tv);
+    // captures du tone : sans parametre, l'API ne renvoie pas les A2 ; on interroge donc chaque architecture
+    // (sans parametre pour les IR et les A1 / custom, puis architecture=2) et on fusionne par id
     juce::Array<juce::var> models;
-    for (int page = 1; page <= 20 && ! quitting; ++page)
+    juce::StringArray seen;
+    bool anyAnswer = false;
+    for (auto arch : { "", "2", "1", "custom" })
     {
-        int status = 0;
-        const auto v = apiGet ("/models?tone_id=" + t.id + "&page=" + juce::String (page) + "&page_size=300", &status);
-        const juce::var* arr = v.isArray() ? &v : (v["data"].isArray() ? &v["data"] : nullptr);
-        if (arr == nullptr) { if (page == 1) { fail ("Could not read this tone from TONE3000"); return; } break; }
-        for (auto& m : *arr->getArray()) models.add (m);
-        if (v.isArray() || page >= (int) v["total_pages"]) break;
+        for (int page = 1; page <= 20 && ! quitting; ++page)
+        {
+            int status = 0;
+            juce::String q = "/models?tone_id=" + t.id + "&page=" + juce::String (page) + "&page_size=300";
+            if (*arch != 0) q << "&architecture=" << arch;
+            const auto v = apiGet (q, &status);
+            const juce::var* arr = v.isArray() ? &v : (v["data"].isArray() ? &v["data"] : nullptr);
+            if (arr == nullptr) break;
+            anyAnswer = true;
+            for (auto& m : *arr->getArray())
+                if (! seen.contains (str (m["id"]))) { seen.add (str (m["id"])); models.add (m); }
+            if (v.isArray() || page >= (int) v["total_pages"]) break;
+        }
     }
+    if (! anyAnswer) { fail ("Could not read this tone from TONE3000"); return; }
+    if (models.isEmpty()) { fail ("This tone has no downloadable capture"); return; }
 
     // versions gardees
     const int mode = getVersionMode();
