@@ -497,257 +497,7 @@ private:
     bool pressed = false;
 };
 
-class LibraryPanel : public juce::Component,
-                     private juce::ListBoxModel,
-                     private juce::Timer
-{
-public:
-    LibraryPanel (AmpireProcessor& p) : proc (p)
-    {
-        setOpaque (true);
-        search.setTextToShowWhenEmpty ("Search captures (name, gear, maker, tone...)", col::dim);
-        search.setFont (fMedium (13.0f));
-        search.setColour (juce::TextEditor::backgroundColourId, col::nameBox);
-        search.setColour (juce::TextEditor::outlineColourId, juce::Colours::transparentBlack);
-        search.setColour (juce::TextEditor::focusedOutlineColourId, col::accent.withAlpha (0.6f));
-        search.setColour (juce::TextEditor::textColourId, col::text);
-        search.setIndents (10, 7);
-        search.onTextChange = [this] { refilter(); };
-        search.onEscapeKey = [this] { if (search.isEmpty()) close(); else search.clear(); refilter(); };
-        search.onReturnKey = [this] { if (! shown.isEmpty()) loadRow (juce::jmax (0, list.getSelectedRow()), true); };
-        addAndMakeVisible (search);
-        list.setModel (this);
-        list.setRowHeight (30);
-        list.setColour (juce::ListBox::backgroundColourId, col::waveTop);
-        list.setOutlineThickness (0);
-        list.getVerticalScrollBar().setColour (juce::ScrollBar::thumbColourId, col::btnHi);
-        addAndMakeVisible (list);
-        startTimerHz (5);
-    }
-    int targetSlot = 0;
-    std::function<void()> onClose;
-
-    void open (int slot)
-    {
-        targetSlot = slot;
-        entries = proc.library.getEntries();
-        drawnVersion = proc.library.getVersion();
-        refilter();
-        setVisible (true);
-        toFront (true);
-        search.grabKeyboardFocus();
-        // selection : capture du slot
-        const auto cur = proc.getSlotInfo (slot).meta.path;
-        for (int i = 0; i < shown.size(); ++i) if (shown[i].path == cur) { list.selectRow (i, false, true); list.scrollToEnsureRowIsOnscreen (i); break; }
-    }
-    void close() { setVisible (false); if (onClose) onClose(); }
-
-    void resized() override
-    {
-        auto r = getLocalBounds();
-        search.setBounds (r.getX() + 12, 46, 330, 28);
-        list.setBounds (r.getX() + 12, 112, r.getWidth() - 24, r.getHeight() - 124);
-    }
-
-    void paint (juce::Graphics& g) override
-    {
-        col::accent = juce::Colour (proc.accentColour.load());
-        g.fillAll (col::panelLo);
-        const auto r = getLocalBounds().toFloat();
-        // titre + slot cible
-        g.setColour (col::text);
-        g.setFont (fBold (15.0f));
-        g.drawText ("CAPTURE LIBRARY", juce::Rectangle<float> (14, 10, 200, 26), juce::Justification::centredLeft);
-        for (auto [b, t] : { std::pair { btnFolder(), "FOLDER..." }, std::pair { btnFile(), "FILE..." }, std::pair { btnRescan(), "RESCAN" } })
-        {
-            drawButtonBg (g, b, false, false);
-            g.setColour (col::label); g.setFont (fBold (11.0f));
-            g.drawText (t, b, juce::Justification::centred);
-        }
-        // fermer
-        const auto x = btnClose();
-        drawButtonBg (g, x, false, false);
-        g.setColour (col::text);
-        g.drawLine (x.getCentreX() - 5, x.getCentreY() - 5, x.getCentreX() + 5, x.getCentreY() + 5, 1.8f);
-        g.drawLine (x.getCentreX() + 5, x.getCentreY() - 5, x.getCentreX() - 5, x.getCentreY() + 5, 1.8f);
-        // filtres
-        for (int i = 0; i < numFilters; ++i)
-        {
-            const auto b = filterBtn (i);
-            const bool on = filter == i;
-            if (on) { g.setColour (col::accent.withAlpha (0.18f)); g.fillRoundedRectangle (b, 11.0f); g.setColour (col::accent); g.drawRoundedRectangle (b.reduced (0.5f), 11.0f, 1.0f); }
-            else { g.setColour (col::nameBox); g.fillRoundedRectangle (b, 11.0f); }
-            g.setColour (on ? col::accent : col::label);
-            g.setFont (fSemi (11.5f));
-            g.drawText (filterName (i), b, juce::Justification::centred);
-        }
-        // pied : dossier + nombre
-        const auto root = proc.library.getRoot();
-        juce::String foot = root.isDirectory() ? root.getFullPathName() : juce::String ("No capture folder yet: click FOLDER... to choose where your .nam files are");
-        g.setColour (col::dim);
-        g.setFont (fMedium (11.0f));
-        g.drawText (foot, juce::Rectangle<float> (352, 46, r.getWidth() - 364, 28), juce::Justification::centredRight, true);
-        juce::String cnt = juce::String (shown.size()) + " / " + juce::String (entries.size()) + " captures";
-        if (proc.library.isScanning()) cnt = "Scanning... " + juce::String (proc.library.scannedCount());
-        g.drawText (cnt, juce::Rectangle<float> (r.getWidth() - 214, 82, 200, 22), juce::Justification::centredRight);
-        if (shown.isEmpty())
-        {
-            g.setColour (col::dim);
-            g.setFont (fMedium (13.0f));
-            g.drawText (entries.isEmpty() ? "Choose your capture folder (FOLDER...) or load a single file (FILE...)" : "No capture matches",
-                        list.getBounds().toFloat(), juce::Justification::centred);
-        }
-    }
-
-    void mouseDown (const juce::MouseEvent& e) override
-    {
-        const auto p = e.position;
-        for (int i = 0; i < numFilters; ++i) if (filterBtn (i).contains (p)) { filter = i; refilter(); return; }
-        if (btnClose().contains (p)) { close(); return; }
-        if (btnRescan().contains (p)) { proc.library.rescan(); repaint(); return; }
-        if (btnFolder().contains (p)) { if (auto* ed = findParentComponentOfClass<AmpireEditor>()) ed->chooseFolder (true); return; }
-        if (btnFile().contains (p))
-        {
-            chooser = std::make_unique<juce::FileChooser> ("Load NAM capture", proc.startFolder (targetSlot), "*.nam");
-            juce::Component::SafePointer<LibraryPanel> sp (this);
-            chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles, [sp] (const juce::FileChooser& fc)
-            {
-                if (sp == nullptr) return;
-                const auto f = fc.getResult();
-                if (f.existsAsFile()) { sp->proc.loadCapture (sp->targetSlot, f); sp->close(); }
-            });
-        }
-    }
-
-private:
-    enum { fAll, fFav, fRecent, fA2, fA1, fAmp, fPedal, fRig, numFilters };
-    static juce::String filterName (int i)
-    {
-        const char* n[numFilters] = { "All", "Favourites", "Recent", "A2", "A1", "Amps", "Pedals", "Full rigs" };
-        return n[i];
-    }
-    juce::Rectangle<float> btnFolder() const { return { (float) getWidth() - 334, 10, 90, 26 }; }
-    juce::Rectangle<float> btnFile() const   { return { (float) getWidth() - 238, 10, 74, 26 }; }
-    juce::Rectangle<float> btnRescan() const { return { (float) getWidth() - 158, 10, 74, 26 }; }
-    juce::Rectangle<float> btnClose() const  { return { (float) getWidth() - 40, 10, 26, 26 }; }
-    juce::Rectangle<float> filterBtn (int i) const { return { 12.0f + i * 76.0f, 83.0f, 70.0f, 22.0f }; }
-
-    bool matches (const CaptureMeta& m, const juce::StringArray& words) const
-    {
-        const auto type = m.gearType.toLowerCase();
-        switch (filter)
-        {
-            case fFav:    if (! proc.library.isFavourite (m.path)) return false; break;
-            case fRecent: if (! recents.contains (m.path)) return false; break;
-            case fA2:     if (! m.isA2) return false; break;
-            case fA1:     if (m.family != "A1") return false; break;
-            case fAmp:    if (! (type == "amp" || type == "preamp")) return false; break;
-            case fPedal:  if (! type.startsWith ("pedal")) return false; break;
-            case fRig:    if (! type.contains ("cab")) return false; break;
-            default: break;
-        }
-        if (words.isEmpty()) return true;
-        const auto hay = (m.title + " " + m.fileName + " " + m.gearMake + " " + m.gearModel + " " + m.gearType + " "
-                          + m.toneType + " " + m.modeledBy + " " + m.family).toLowerCase();
-        for (auto& w : words) if (! hay.contains (w)) return false;
-        return true;
-    }
-
-    void refilter()
-    {
-        recents = proc.library.getRecents();
-        const auto words = juce::StringArray::fromTokens (search.getText().toLowerCase(), " ", "\"");
-        shown.clearQuick();
-        if (filter == fRecent)
-        {
-            // dans l'ordre d'utilisation, meme hors du dossier de la bibliotheque
-            for (auto& path : recents)
-            {
-                CaptureMeta m;
-                bool found = false;
-                for (auto& e : entries) if (e.path == path) { m = e; found = true; break; }
-                if (! found && ! CaptureBuilder::readMeta (juce::File (path), m)) continue;
-                if (matches (m, words)) shown.add (m);
-            }
-        }
-        else for (auto& e : entries) if (matches (e, words)) shown.add (e);
-        list.updateContent();
-        list.repaint();
-        repaint();
-    }
-
-    void loadRow (int row, bool andClose)
-    {
-        if (row < 0 || row >= shown.size()) return;
-        proc.loadCapture (targetSlot, juce::File (shown[row].path));
-        if (andClose) close();
-    }
-
-    // ---- ListBoxModel
-    int getNumRows() override { return shown.size(); }
-    void paintListBoxItem (int row, juce::Graphics& g, int w, int h, bool selected) override
-    {
-        if (row < 0 || row >= shown.size()) return;
-        const auto& m = shown.getReference (row);
-        const auto r = juce::Rectangle<float> (0, 0, (float) w, (float) h);
-        if (selected) { g.setColour (col::accent.withAlpha (0.16f)); g.fillRect (r); g.setColour (col::accent); g.fillRect (0.0f, 0.0f, 3.0f, (float) h); }
-        else if (row % 2) { g.setColour (juce::Colours::white.withAlpha (0.02f)); g.fillRect (r); }
-        // favori
-        const bool fav = proc.library.isFavourite (m.path);
-        juce::Path star;
-        star.addStar ({ 18.0f, h * 0.5f }, 5, 3.2f, 7.5f, 0.0f);
-        g.setColour (fav ? col::accent : col::dim.darker (0.4f));
-        if (fav) g.fillPath (star); else g.strokePath (star, juce::PathStrokeType (1.1f));
-        // famille (A2 / A1...)
-        const auto badge = juce::Rectangle<float> (34, h * 0.5f - 8, 30, 16);
-        g.setColour (m.isA2 ? col::accent : col::btnHi);
-        g.fillRoundedRectangle (badge, 2.5f);
-        g.setColour (m.isA2 ? juce::Colour (0xff151515) : col::text);
-        g.setFont (fBold (10.0f));
-        g.drawText (m.family.isNotEmpty() ? m.family.substring (0, 4) : "?", badge, juce::Justification::centred);
-        // nom + materiel
-        const auto title = m.title.isNotEmpty() ? m.title : m.fileName;
-        g.setColour (col::text);
-        g.setFont (fName (13.0f));
-        g.drawText (title, juce::Rectangle<float> (74, 0, (float) w * 0.46f - 74, (float) h), juce::Justification::centredLeft, true);
-        g.setColour (col::label);
-        g.setFont (fMedium (11.5f));
-        const auto gear = (m.gearMake + " " + m.gearModel).trim();
-        g.drawText (gear, juce::Rectangle<float> ((float) w * 0.47f, 0, (float) w * 0.25f, (float) h), juce::Justification::centredLeft, true);
-        auto pretty = [] (juce::String s) { return s.replace ("_", " "); };
-        g.drawText (pretty (m.gearType), juce::Rectangle<float> ((float) w * 0.73f, 0, (float) w * 0.12f, (float) h), juce::Justification::centredLeft, true);
-        g.drawText (pretty (m.toneType), juce::Rectangle<float> ((float) w * 0.85f, 0, (float) w * 0.14f, (float) h), juce::Justification::centredLeft, true);
-    }
-    void listBoxItemClicked (int row, const juce::MouseEvent& e) override
-    {
-        if (e.x < 30 && row >= 0 && row < shown.size()) { proc.library.toggleFavourite (shown[row].path); list.repaintRow (row); return; }
-        loadRow (row, false);           // un clic : ecoute immediate
-    }
-    void listBoxItemDoubleClicked (int row, const juce::MouseEvent&) override { loadRow (row, true); }
-    void selectedRowsChanged (int row) override
-    {
-        // fleches haut / bas du clavier : la capture selectionnee se charge (ecoute rapide)
-        if (row >= 0 && list.hasKeyboardFocus (true) && ! juce::ModifierKeys::currentModifiers.isAnyMouseButtonDown()) loadRow (row, false);
-    }
-    void returnKeyPressed (int row) override { loadRow (row, true); }
-
-    void timerCallback() override
-    {
-        if (! isVisible()) return;
-        const auto v = proc.library.getVersion();
-        if (v != drawnVersion) { drawnVersion = v; entries = proc.library.getEntries(); refilter(); }
-        else if (proc.library.isScanning()) repaint (toInt ({ (float) getWidth() - 214, 82, 200, 22 }));
-    }
-
-    AmpireProcessor& proc;
-    juce::TextEditor search;
-    juce::ListBox list;
-    juce::Array<CaptureMeta> entries, shown;
-    juce::StringArray recents;
-    int filter = fAll;
-    juce::uint32 drawnVersion = 0;
-    std::unique_ptr<juce::FileChooser> chooser;
-};
+#include "LibraryView.h"
 
 // ============================================================================ contenu de la fenetre
 // ---- inverseur STACK (mode stack : l'Impulse de la meme piste REAPER colle sous Ampire) ; levier haut = actif.
@@ -849,7 +599,7 @@ public:
         stackBtn.onClick = [this] { if (auto* ed = findParentComponentOfClass<AmpireEditor>()) ed->toggleStack(); };
 
         addChildComponent (library);
-        library.setBounds (toInt ({ 12, 48, 736, (float) kH - 60 }));
+        library.setBounds (0, 0, kW, kH);
         library.onClose = [this] { askRepaint (getLocalBounds()); };
 
         updateKnobSet();
@@ -860,6 +610,9 @@ public:
 
     ~AmpireContent() override = default;
     void openLibrary (int s) { library.open (s); }
+   #if AMPIRE_TOOL
+    void previewLibrary (int tab, bool signedIn) { library.previewDemo (signedIn); library.open (0); library.setTab (tab); }
+   #endif
 
     // ---------------------------------------------------------------- dessin
     void paint (juce::Graphics& g) override
@@ -1672,6 +1425,9 @@ void AmpireEditor::resetRenderer()
 void AmpireEditor::paint (juce::Graphics& g) { g.fillAll (col::outer); }
 
 void AmpireEditor::openLibrary (int slot) { content->openLibrary (slot); }
+#if AMPIRE_TOOL
+void AmpireEditor::previewLibrary (int tab, bool signedIn) { content->previewLibrary (tab, signedIn); }
+#endif
 void AmpireEditor::showStatus (const juce::String& msg) { content->showStatus (msg); }
 
 void AmpireEditor::chooseFolder (bool lib)

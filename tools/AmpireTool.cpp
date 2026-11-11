@@ -38,6 +38,7 @@ int main (int argc, char** argv)
         if (arg (9) == "0") setP (proc, "active", 0.0f);     // rendu POWER OFF
         std::unique_ptr<juce::AudioProcessorEditor> ed (proc.createEditor());
         if (arg (8) == "1") if (auto* ae = dynamic_cast<AmpireEditor*> (ed.get())) ae->openLibrary (0);
+        if (arg (8) == "t" || arg (8) == "s") if (auto* ae = dynamic_cast<AmpireEditor*> (ed.get())) ae->previewLibrary (1, arg (8) == "t");
         if (arg (10).isNotEmpty()) if (auto* ae = dynamic_cast<AmpireEditor*> (ed.get())) ae->previewStackButton (arg (10) != "na", arg (10) == "on");   // apparence du bouton IMPULSE
         // signal entretenu pendant l'affichage : vu-metres allumes sur la capture
         for (int k = 0; k < 24; ++k)

@@ -27,6 +27,9 @@ public:
     void askPresetName();
     void chooseFolder (bool library);    // dossier des captures (bibliotheque) ou des IR
     void openLibrary (int slot);         // outil : ouvre la bibliotheque
+   #if AMPIRE_TOOL
+    void previewLibrary (int tab, bool signedIn);   // outil : onglet Library / TONE3000 avec donnees fictives
+   #endif
     void showStatus (const juce::String& msg);   // message temporaire dans l'ecran
 
     // mode « stack » : l'Impulse de la meme piste REAPER colle sous Ampire (NhdStack.h)

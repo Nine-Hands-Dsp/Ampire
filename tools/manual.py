@@ -2,7 +2,7 @@
 # Usage : python3 tools/manual.py <dossier des captures> <fichier PDF de sortie>
 #   captures attendues (AmpireTool render ... 2) : main.png (capture A2 chargee, POWER on, STACK off), lib.png (bibliotheque
 #   ouverte), stackon.png (STACK on), poweroff.png (POWER off), ladder.png (conteneur a plusieurs sous-modeles),
-#   menu.png (AmpireTool menu).
+#   menu.png (AmpireTool menu), t3k.png (onglet TONE3000, donnees fictives : render ... t), t3kconnect.png (ecran de connexion : render ... s).
 import os, sys, subprocess, shutil
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
@@ -17,7 +17,7 @@ from reportlab.pdfbase.ttfonts import TTFont
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SHOTS, OUT = sys.argv[1], sys.argv[2]
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 TMP = os.path.dirname(os.path.abspath(OUT))
 MA = os.path.join(ROOT, "tools", "manual_assets")
 for n, f in (("Pop", os.path.join(ROOT, "assets", "Poppins-Regular.ttf")), ("PopM", os.path.join(ROOT, "assets", "Poppins-Medium.ttf")),
@@ -54,14 +54,11 @@ for n, x, y in marks:
     dr.text((cx, cy + 1), str(n), font=fnt, fill=(27, 26, 25), anchor="mm")
 annotated = save(ann, "ampire_annotated.png")
 
-# bibliotheque : le chemin du dossier (propre a la machine) remplace par un exemple
-lib = shot("lib.png"); dl = ImageDraw.Draw(lib)
-dl.rectangle((46, 500, 1468, 550), fill=lib.getpixel((300, 540)))      # 4e ligne (capture de test) masquee
-dl.rectangle((1300, 266, 1466, 296), fill=lib.getpixel((1290, 281)))
-dl.text((1462, 281), "3 / 3 captures", font=ImageFont.truetype(os.path.join(ROOT, "assets", "Inter-Medium.otf") if os.path.exists(os.path.join(ROOT, "assets", "Inter-Medium.otf")) else os.path.join(ROOT, "assets", "Poppins-Regular.ttf"), 18), fill=(120, 120, 120), anchor="rm")
-dl.rectangle((720, 196, 1470, 236), fill=(16, 17, 19))
-dl.text((735, 216), "D:\\Musique\\Captures NAM", font=ImageFont.truetype(os.path.join(ROOT, "assets", "Inter-Medium.otf") if os.path.exists(os.path.join(ROOT, "assets", "Inter-Medium.otf")) else os.path.join(ROOT, "assets", "Poppins-Regular.ttf"), 21), fill=(150, 150, 150), anchor="lm")
+# bibliotheque (dossier d'exemple aux noms neutres) et onglet TONE3000
+lib = shot("lib.png")
 lib_img = save(lib, "ampire_library.png")
+t3k_img = save(shot("t3k.png"), "ampire_t3k.png")
+t3kc_img = save(shot("t3kconnect.png"), "ampire_t3k_connect.png")
 
 gap = 14
 def strip(parts, name):
@@ -135,7 +132,7 @@ DL = "https://github.com/Nine-Hands-Dsp/Ampire/releases/latest/download/"
 story = [NextPageTemplate("p"), Spacer(1, 1), PageBreak()]
 story += [P("1. Présentation", "h1"),
     P("<b>AMPIRE</b> est un plugin NINE HANDS | DSP qui charge des captures <b>Neural Amp Modeler</b> (fichiers <b>.nam</b>) : amplis, préamplis, pédales ou chaînes complètes, pour guitare comme pour basse. Il lit les captures <b>A1</b> (WaveNet et LSTM) et les nouvelles captures <b>A2</b>, avec le chemin de calcul rapide A2 de NeuralAmpModelerCore 0.6."),
-    P("Le son est celui du moteur NAM d'origine, sans rien ajouter : mesuré sur de vraies captures A1 et A2, l'écart entre Ampire et NeuralAmpModelerCore est inférieur à −110 dB (hors gain de normalisation). Autour du modèle, Ampire ajoute le confort d'un vrai ampli : potards INPUT / OUTPUT, pile de tonalité BASS / MIDDLE / TREBLE (celle du plugin NAM d'origine), choix de la taille des captures A2, anti-repliement sans latence, bibliothèque de captures avec recherche et favoris, presets, vu-mètres à LEDs et MIDI Learn."),
+    P("Le son est celui du moteur NAM d'origine, sans rien ajouter : mesuré sur de vraies captures A1 et A2, l'écart entre Ampire et NeuralAmpModelerCore est inférieur à −110 dB (hors gain de normalisation). Autour du modèle, Ampire ajoute le confort d'un vrai ampli : potards INPUT / OUTPUT, pile de tonalité BASS / MIDDLE / TREBLE (celle du plugin NAM d'origine), choix de la taille des captures A2, anti-repliement sans latence, bibliothèque de captures avec recherche et favoris, téléchargement direct des tones TONE3000, presets, vu-mètres à LEDs et MIDI Learn."),
     P("Dans REAPER, l'inverseur <b>STACK</b> affiche l'<b>Impulse</b> de la même piste (le chargeur d'IR NINE HANDS | DSP) collé sous la façade d'Ampire : ampli et baffle se règlent dans une seule fenêtre."),
     P("2. Installation", "h1")]
 for h, x in [("Téléchargement", "Dernière version : <b>Windows</b> <font color='#E8701A'>" + DL + "Ampire-VST3-Windows.zip</font> ; <b>macOS</b> <font color='#E8701A'>" + DL + "Ampire-VST3-macOS.zip</font> (boutons de téléchargement en tête du README du dépôt GitHub Nine-Hands-Dsp/Ampire)."),
@@ -150,7 +147,7 @@ story += [P("3. Vue d'ensemble de l'interface", "h1"), img(annotated, W), Spacer
     table([["#", "Élément", "Rôle"],
         ["1", "Écran", "Capture chargée : nom, matériel / type / son, puis format (A1 / A2, taille), fréquence, anti-repliement, calibration, ESR. Clic = bibliothèque ; déposez un .nam dessus pour le charger."],
         ["2", "Zone d'état", "CPU, fréquence du projet, anti-repliement et latence ; affiche aussi les messages (réglage modifié, MIDI Learn…)."],
-        ["3", "Bibliothèque", "Ouvre la bibliothèque de captures."],
+        ["3", "Bibliothèque", "Ouvre la bibliothèque de captures et l'onglet TONE3000."],
         ["4 / 5", "Précédente / suivante", "Capture précédente / suivante du dossier (ou de la liste filtrée de la bibliothèque)."],
         ["6 / 7", "Vu-mètres IN / OUT", "Niveau d'entrée (après INPUT) et de sortie, 48 LEDs, mémoire de crête, écrêtage."],
         ["8", "INPUT", "Gain d'entrée, −20 à +20 dB."],
@@ -162,7 +159,7 @@ story += [P("3. Vue d'ensemble de l'interface", "h1"), img(annotated, W), Spacer
     P("Clic droit n'importe où sur l'interface : menu des réglages (chapitre 9).", "small"),
     PageBreak()]
 
-story += [P("4. Captures et bibliothèque", "h1"),
+story += [P("4. Captures, bibliothèque et TONE3000", "h1"),
     P("L'écran", "h2"), img(lcd_img, W * 0.9), Spacer(1, 2 * mm),
     P("La première ligne donne le titre de la capture (ou le nom du fichier), la deuxième le matériel, le type (ampli, pédale, chaîne complète…) et le son (clean, crunch, high gain…) lus dans le fichier, la troisième le format : <b>A2 FULL / LITE</b> ou <b>STEP n/N</b>, <b>A1</b> et sa variante, la fréquence de la capture, l'anti-repliement (<b>AA 2x</b>), le niveau de calibration (<b>cal … dBu</b>) et l'erreur d'entraînement (<b>ESR</b>) quand le fichier les fournit. <b>project copy</b> signale une capture relue depuis le projet (fichier d'origine introuvable). À droite : charge CPU, fréquence du projet, anti-repliement, et <b>LATENCY 0 (none added)</b> quand le projet est à la fréquence de la capture."),
     P("Charger une capture", "h2"),
@@ -171,13 +168,26 @@ story += [P("4. Captures et bibliothèque", "h1"),
               "<b>Glisser-déposer</b> d'un fichier .nam sur l'interface.",
               "Le chargement se fait en arrière-plan, sans couper le son ; le passage d'une capture à l'autre (comme un changement de taille ou d'anti-repliement) se fait par un fondu de 30 ms, sans clic. Pendant le chargement, l'écran affiche <b>LOADING...</b>",
               "La capture est enregistrée <b>dans le projet</b> (et dans les presets) : le projet se rouvre avec le bon son même si le fichier a été déplacé."]),
-    P("La bibliothèque", "h2"), img(lib_img, W * 0.72), P("La bibliothèque de captures.", "small"),
-    *bullets(["<b>FOLDER...</b> choisit le dossier de vos captures (sous-dossiers compris), analysé en arrière-plan ; <b>FILE...</b> charge un fichier isolé ; <b>RESCAN</b> relit le dossier.",
-              "<b>Recherche</b> sur le nom, le matériel, le fabricant, le son… (plusieurs mots possibles).",
-              "<b>Filtres</b> : All, Favourites, Recent, A2, A1, Amps, Pedals, Full rigs.",
-              "<b>Un clic</b> sur une ligne charge la capture tout de suite (écoute rapide) et laisse la bibliothèque ouverte ; <b>double-clic</b> ou <b>Entrée</b> la charge et ferme la bibliothèque ; les flèches haut / bas du clavier passent d'une capture à l'autre en l'écoutant.",
-              "<b>Étoile</b> (à gauche de la ligne) : ajoute ou retire des favoris.",
-              "<b>Dossier par défaut</b> : mémorisé pour toutes les instances et tous les projets. La première capture chargée le définit ; on le change par FOLDER... ou par clic droit &gt; Capture folder."]),
+    P("La bibliothèque", "h2"), img(lib_img, W * 0.82), P("La bibliothèque : dossiers, sous-dossiers et captures.", "small"),
+    P("Elle s'ouvre dans une fenêtre en verre fumé au-dessus d'Ampire (clic sur l'écran ou sur le bouton bibliothèque). L'onglet <b>Library</b> montre vos captures, l'onglet <b>TONE3000</b> le catalogue en ligne (plus bas)."),
+    *bullets(["<b>Trois colonnes</b> : à gauche <b>Favourites</b>, <b>Recent</b> puis les dossiers de votre dossier de captures ; au milieu les sous-dossiers du dossier choisi ; à droite ses captures. Chaque colonne défile à la molette ; le chemin s'affiche au-dessus.",
+              "<b>Recherche</b> (en haut) sur le nom, le matériel, le fabricant, le son, le dossier… dans toute la bibliothèque, plusieurs mots possibles.",
+              "<b>Dossier</b> (icône à côté de la recherche) : choisir le dossier de vos captures (sous-dossiers compris, analysé en arrière-plan), charger un fichier isolé, ouvrir le dossier. <b>Rescan</b> relit le dossier.",
+              "<b>Un clic</b> sur une capture la charge tout de suite (écoute rapide) et laisse la bibliothèque ouverte ; <b>double-clic</b> ou <b>Entrée</b> la charge et ferme la bibliothèque ; les flèches haut / bas du clavier passent d'une capture à l'autre en l'écoutant ; <b>Échap</b> ferme.",
+              "<b>Étoile</b> (à gauche de la ligne) : ajoute ou retire des favoris. Pastille <b>A2 / A1</b> et type (Amp, Pedal, Full rig) quand le fichier l'indique. Clic droit sur une capture : charger, favori, afficher dans le dossier.",
+              "<b>Dossier par défaut</b> : mémorisé pour toutes les instances et tous les projets. La première capture chargée le définit ; on le change par l'icône dossier ou par clic droit &gt; Capture folder."]),
+    P("TONE3000", "h2"),
+    P("Ampire est partenaire de <b>TONE3000</b> (tone3000.com), le catalogue communautaire de captures NAM et d'IR. L'onglet <b>TONE3000</b> de la bibliothèque télécharge les tones directement dans votre dossier de captures."),
+    img(t3kc_img, W * 0.82), P("Avant la première connexion.", "small"),
+    *bullets(["<b>CONNECT WITH TONE3000</b> ouvre votre navigateur sur la page de connexion de TONE3000 (e-mail et code à 6 chiffres) ; revenez ensuite dans Ampire. Ampire ne voit jamais votre mot de passe : il garde une autorisation qu'il renouvelle seul, la connexion se fait donc une seule fois. <b>Sign out</b> (sous votre nom) la supprime.",
+              "Il faut avoir choisi un dossier de captures dans l'onglet Library : c'est là que les tones sont rangés."]),
+    img(t3k_img, W * 0.82), P("Les tones favoris sur TONE3000 (exemple).", "small"),
+    *bullets(["<b>Favorites</b> (vos favoris sur TONE3000), <b>Synced</b> (les tones déjà téléchargés par Ampire), <b>Created</b> (vos propres tones), <b>Trending</b> et <b>Latest</b> (les 10 tones du moment et les 10 plus récents). Les cartes défilent vers le bas à la molette et la suite se charge toute seule.",
+              "Chaque carte montre l'image du tone, son titre, son type, son format (A2, A1 ou IR) et son auteur. Le bouton suit l'état du tone : <b>SYNC</b> le télécharge, <b>DOWNLOADING n / N</b> pendant le téléchargement, <b>SYNCED · LOAD</b> une fois téléchargé (un clic passe dans l'onglet Library sur le dossier du tone et charge sa capture A2), <b>UPDATE AVAILABLE</b> quand l'auteur a publié une nouvelle version. Clic droit : télécharger à nouveau, afficher dans le dossier, ouvrir la page TONE3000.",
+              "<b>Browse TONE3000</b> ouvre le catalogue complet de TONE3000 dans le navigateur : le tone choisi est téléchargé et apparaît dans <b>Synced</b>.",
+              "<b>Versions</b> (à droite) : <b>Best</b> (par défaut) ne garde qu'une version de chaque capture, A2 sinon A1 ; ou <b>A2 only</b>, <b>A1 only</b>, <b>Custom only</b>, <b>All versions</b>. Les IR sont toujours gardées.",
+              "<b>Rangement</b> (le même que NAMMAN) : <b>&lt;dossier&gt;/&lt;catégorie&gt;/&lt;nom du tone&gt;/</b> avec un fichier <b>metadata.json</b> ; catégories <b>Amp_and_Cab</b>, <b>Amps</b>, <b>Pedals</b>, <b>Cabinets_IRs</b> (les IR, pour Impulse), <b>Spaces</b>, <b>Outboard</b>, <b>Experimental</b>. À une mise à jour, les anciennes versions sont déplacées dans <b>_Archive</b> : rien n'est jamais effacé.",
+              "Respectez la licence de chaque tone (affichée sur sa page TONE3000). L'accès gratuit de TONE3000 est réservé à un usage non commercial."]),
     ]
 
 story += [P("5. Les potards", "h1"),

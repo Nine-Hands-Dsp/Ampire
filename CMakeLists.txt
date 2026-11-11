@@ -6,7 +6,7 @@ if(APPLE)
   set(CMAKE_OSX_DEPLOYMENT_TARGET "10.15" CACHE STRING "" FORCE)   # std::filesystem (NAM Core)
 endif()
 
-project(WigaAmpire VERSION 1.0.0)
+project(WigaAmpire VERSION 1.1.0)
 
 option(AMPIRE_TOOLS "Build the Linux render / test tools" OFF)
 set(CMAKE_CXX_STANDARD 20)
@@ -72,7 +72,9 @@ juce_add_binary_data(AmpireAssets SOURCES
   assets/diode_off.png
   assets/Poppins-Regular.ttf
   assets/Poppins-Medium.ttf
-  assets/Poppins-Bold.ttf)
+  assets/Poppins-Bold.ttf
+  assets/t3k/T3K_logo.svg
+  assets/t3k/TONE3000_logo.svg)
 
 if(APPLE)
   set(AMPIRE_FORMATS VST3 AU)
@@ -98,7 +100,8 @@ target_sources(Ampire PRIVATE
   PluginProcessor.cpp
   PluginEditor.cpp
   NamEngine.cpp
-  CaptureLibrary.cpp)
+  CaptureLibrary.cpp
+  Tone3000.cpp)
 
 # mode stack (NhdStack.h) : interface VST3 de REAPER (funknown.h du SDK VST3 fourni avec JUCE)
 target_include_directories(Ampire PRIVATE
@@ -115,6 +118,7 @@ target_link_libraries(Ampire
     AmpireAssets
     juce::juce_audio_utils
     juce::juce_dsp
+    juce::juce_cryptography
   PUBLIC
     juce::juce_recommended_config_flags
     juce::juce_recommended_warning_flags)

@@ -9,7 +9,7 @@ Neural Amp Modeler capture loader (A1 and A2) for guitar and bass — VST3 (Wind
   <br>
   <a href="https://github.com/Nine-Hands-Dsp/Ampire/releases/latest"><img alt="Dernière version" src="https://img.shields.io/github/v/release/Nine-Hands-Dsp/Ampire?label=derni%C3%A8re%20version&color=919496"></a>
   <br>
-  <a href="https://github.com/Nine-Hands-Dsp/Ampire/raw/main/docs/Ampire_Notice_FR_v1.0.0.pdf"><img alt="Notice (PDF)" src="https://img.shields.io/badge/%F0%9F%93%96%20Notice-PDF%20fran%C3%A7ais-E8701A?style=for-the-badge"></a>
+  <a href="https://github.com/Nine-Hands-Dsp/Ampire/raw/main/docs/Ampire_Notice_FR_v1.1.0.pdf"><img alt="Notice (PDF)" src="https://img.shields.io/badge/%F0%9F%93%96%20Notice-PDF%20fran%C3%A7ais-E8701A?style=for-the-badge"></a>
 </p>
 
 ## Fonctions
@@ -22,8 +22,9 @@ Neural Amp Modeler capture loader (A1 and A2) for guitar and bass — VST3 (Wind
 - Anti-repliement : off / 2x / 4x, suréchantillonnage à phase minimale **sans latence** (TONE3000).
 - Latence : 0 échantillon quand la fréquence du projet est celle de la capture (48 kHz) ; sinon rééchantillonnage, latence annoncée à l'hôte.
 - Changement de capture, de taille ou d'anti-repliement sans clic (fondu de 30 ms), chargement en arrière-plan.
-- Bibliothèque : dossier analysé en arrière-plan, recherche, filtres, favoris, récents, précédente / suivante, glisser-déposer d'un `.nam`.
-- **Dossier de captures par défaut**, mémorisé pour toutes les instances et tous les projets : la première capture chargée définit ce dossier ; on le change ensuite par le menu du clic droit → Capture folder (« Choose default capture folder… » ou « Use this capture's folder as default ») ou par FOLDER… dans la bibliothèque. Le dernier dossier ouvert est mémorisé lui aussi.
+- Bibliothèque (fenêtre en verre fumé, style des menus d'Octopus) : recherche, trois colonnes dossiers / sous-dossiers / captures avec défilement, favoris, récents, précédente / suivante, glisser-déposer d'un `.nam`.
+- **TONE3000** : onglet de la bibliothèque relié au catalogue tone3000.com (API officielle, connexion par le navigateur) : Favorites, Synced, Created, Trending, Latest, Browse TONE3000 ; téléchargement des tones dans le dossier de captures, rangement compatible NAMMAN (`<catégorie>/<tone>/` + `metadata.json`, anciennes versions dans `_Archive`), choix des versions (Best, A2, A1, Custom, toutes). Accès gratuit TONE3000 : usage non commercial.
+- **Dossier de captures par défaut**, mémorisé pour toutes les instances et tous les projets : la première capture chargée définit ce dossier ; on le change ensuite par le menu du clic droit → Capture folder (« Choose default capture folder… » ou « Use this capture's folder as default ») ou par l'icône dossier de la bibliothèque. Le dernier dossier ouvert est mémorisé lui aussi.
 - Vu-mètres IN / OUT à 48 LEDs (échelle −50…0 dBFS), mémoire de crête qui s'efface au bout de 2 s, reflet des LEDs dans le verre ; à l'écrêtage, les 3 LEDs du haut passent en rouge vif. Couleur des LEDs et des 3 LEDs de saturation réglables (clic droit → Colours & glow), avec fondu sur les 4 LEDs intermédiaires.
 - Presets `.ampire` avec la capture intégrée (clic droit → Presets) ; le projet du DAW garde aussi la capture.
 - MIDI Learn sur tous les potards et sur précédente / suivante (aucun CC assigné par défaut).
