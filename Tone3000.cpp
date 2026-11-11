@@ -30,26 +30,51 @@ namespace
 
     juce::String nowIso() { return juce::Time::getCurrentTime().toISO8601 (true); }
 
-    // requete JSON (GET, ou POST de formulaire si form != nullptr)
+    juce::String lastHttpError;     // derniere erreur HTTP (affichee a l'utilisateur et ecrite dans tone3000.log)
+
+    void logLine (const juce::String& s)
+    {
+        const auto f = CaptureLibrary::settingsDir().getChildFile ("tone3000.log");
+        if (f.getSize() > 200000) f.deleteFile();
+        f.appendText (juce::Time::getCurrentTime().toISO8601 (true) + "  " + s + "\n");
+    }
+
+    // requete JSON (GET, ou POST de formulaire si form != nullptr). Le statut 0 (non transmis par certains systemes)
+    // est accepte quand la reponse est un JSON sans champ « error ».
     juce::var httpJson (const juce::String& address, const juce::String& bearer, int& status, const juce::StringPairArray* form = nullptr)
     {
-        juce::URL u (address);
-        juce::String headers = "Accept: application/json\r\n";
+        juce::String headers = "Accept: application/json\r\nUser-Agent: Ampire/" JucePlugin_VersionString " (NINE HANDS DSP)\r\n";
         if (bearer.isNotEmpty()) headers << "Authorization: Bearer " << bearer << "\r\n";
-        auto handling = juce::URL::ParameterHandling::inAddress;
+        juce::URL u (address);
         if (form != nullptr)
         {
-            for (auto& k : form->getAllKeys()) u = u.withParameter (k, (*form)[k]);
-            handling = juce::URL::ParameterHandling::inPostData;
+            juce::String body;
+            for (auto& k : form->getAllKeys())
+                body << (body.isEmpty() ? "" : "&") << juce::URL::addEscapeChars (k, true) << "=" << juce::URL::addEscapeChars ((*form)[k], true);
+            u = u.withPOSTData (body);
             headers << "Content-Type: application/x-www-form-urlencoded\r\n";
         }
         status = 0;
-        auto in = u.createInputStream (juce::URL::InputStreamOptions (handling)
-                                           .withExtraHeaders (headers)
-                                           .withConnectionTimeoutMs (20000)
-                                           .withStatusCode (&status));
-        if (in == nullptr) return {};
-        return juce::JSON::parse (in->readEntireStreamAsString());
+        const auto opts = juce::URL::InputStreamOptions (juce::URL::ParameterHandling::inAddress)
+                              .withExtraHeaders (headers)
+                              .withConnectionTimeoutMs (20000)
+                              .withStatusCode (&status)
+                              .withHttpRequestCmd (form != nullptr ? "POST" : "GET");
+        auto in = u.createInputStream (opts);
+        if (in == nullptr) { lastHttpError = "no connection"; logLine (address + " : no connection"); return {}; }
+        const auto text = in->readEntireStreamAsString();
+        auto v = juce::JSON::parse (text);
+        const bool err = (status != 0 && (status < 200 || status >= 300)) || v.isVoid() || v.hasProperty ("error");
+        if (status == 0 && ! err) status = 200;
+        if (err)
+        {
+            lastHttpError = "HTTP " + juce::String (status);
+            if (v.isObject()) lastHttpError << ": " << v["error"].toString() << (v["error_description"].toString().isNotEmpty() ? " - " + v["error_description"].toString() : juce::String());
+            else lastHttpError << ": " << text.substring (0, 80).replaceCharacters ("\r\n", "  ");
+            if (status >= 200 && status < 300) status = 502;
+            logLine (address.upToFirstOccurrenceOf ("?", false, false) + " : " + lastHttpError);
+        }
+        return v;
     }
 
     juce::String archOf (const juce::var& m) { return str (m["architecture_version"]); }
@@ -217,7 +242,7 @@ private:
             if (q["canceled"] == "true") { client.loginFinished ("Sign-in canceled", {}); return; }
             if (q["error"].isNotEmpty()) { client.loginFinished ("TONE3000: " + q["error"], {}); return; }
             if (! ok) { client.loginFinished ("Sign-in failed (invalid answer)", {}); return; }
-            if (! client.exchangeCode (q["code"], verifier, redirect())) { client.loginFinished ("Could not sign in to TONE3000", {}); return; }
+            if (! client.exchangeCode (q["code"], verifier, redirect())) { client.loginFinished ("Could not sign in to TONE3000 (" + lastHttpError + ")", {}); return; }
             client.fetchUser();
             client.loginFinished ({}, q["tone_id"]);
             return;
@@ -326,7 +351,7 @@ bool Client::exchangeCode (const juce::String& code, const juce::String& verifie
     f.set ("client_id", kClientId);
     int status = 0;
     const auto v = httpJson (kApi + "/oauth/token", {}, status, &f);
-    if (status != 200 || str (v["access_token"]).isEmpty()) return false;
+    if (str (v["access_token"]).isEmpty()) return false;
     {
         const juce::ScopedLock sl (lock);
         access = str (v["access_token"]);
@@ -348,7 +373,7 @@ bool Client::refreshToken()
     f.set ("client_id", kClientId);
     int status = 0;
     const auto v = httpJson (kApi + "/oauth/token", {}, status, &f);
-    if (status == 200 && str (v["access_token"]).isNotEmpty())
+    if (str (v["access_token"]).isNotEmpty())
     {
         {
             const juce::ScopedLock sl (lock);
