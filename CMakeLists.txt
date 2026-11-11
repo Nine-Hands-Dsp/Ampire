@@ -6,7 +6,7 @@ if(APPLE)
   set(CMAKE_OSX_DEPLOYMENT_TARGET "10.15" CACHE STRING "" FORCE)   # std::filesystem (NAM Core)
 endif()
 
-project(WigaAmpire VERSION 1.1.1)
+project(WigaAmpire VERSION 1.1.2)
 
 option(AMPIRE_TOOLS "Build the Linux render / test tools" OFF)
 set(CMAKE_CXX_STANDARD 20)

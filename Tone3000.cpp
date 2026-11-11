@@ -2,6 +2,17 @@
 #include "CaptureLibrary.h"
 #include <juce_cryptography/juce_cryptography.h>
 #include <random>
+#if JUCE_WINDOWS
+ #include <windows.h>
+ #include <winhttp.h>
+ #pragma comment (lib, "winhttp.lib")
+ #ifndef WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY
+  #define WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY 4
+ #endif
+ #ifndef WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_3
+  #define WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_3 0x00002000
+ #endif
+#endif
 
 namespace t3k
 {
@@ -39,33 +50,113 @@ namespace
         f.appendText (juce::Time::getCurrentTime().toISO8601 (true) + "  " + s + "\n");
     }
 
-    // requete JSON (GET, ou POST de formulaire si form != nullptr). Le statut 0 (non transmis par certains systemes)
-    // est accepte quand la reponse est un JSON sans champ « error ».
-    juce::var httpJson (const juce::String& address, const juce::String& bearer, int& status, const juce::StringPairArray* form = nullptr)
+    // ---- requete HTTP(S) : WinHTTP sous Windows (erreurs detaillees), pile reseau de JUCE ailleurs.
+    //      La reponse est ecrite dans « out » ; renvoie false si aucune reponse (err explique pourquoi).
+    bool httpRequest (const juce::String& method, const juce::String& address, const juce::String& headers,
+                      const juce::MemoryBlock& body, int& status, juce::OutputStream& out, juce::String& err,
+                      const std::atomic<bool>* cancel = nullptr)
     {
-        juce::String headers = "Accept: application/json\r\nUser-Agent: Ampire/" JucePlugin_VersionString " (NINE HANDS DSP)\r\n";
-        if (bearer.isNotEmpty()) headers << "Authorization: Bearer " << bearer << "\r\n";
-        juce::URL u (address);
-        if (form != nullptr)
-        {
-            juce::String body;
-            for (auto& k : form->getAllKeys())
-                body << (body.isEmpty() ? "" : "&") << juce::URL::addEscapeChars (k, true) << "=" << juce::URL::addEscapeChars ((*form)[k], true);
-            u = u.withPOSTData (body);
-            headers << "Content-Type: application/x-www-form-urlencoded\r\n";
-        }
         status = 0;
+       #if JUCE_WINDOWS
+        URL_COMPONENTS uc {};
+        uc.dwStructSize = sizeof (uc);
+        uc.dwHostNameLength = (DWORD) -1; uc.dwUrlPathLength = (DWORD) -1; uc.dwExtraInfoLength = (DWORD) -1; uc.dwSchemeLength = (DWORD) -1;
+        const std::wstring wurl (address.toWideCharPointer());
+        if (! WinHttpCrackUrl (wurl.c_str(), 0, 0, &uc)) { err = "bad address (" + juce::String ((int) GetLastError()) + ")"; return false; }
+        const std::wstring host (uc.lpszHostName, uc.dwHostNameLength);
+        std::wstring path (uc.lpszUrlPath, uc.dwUrlPathLength);
+        if (uc.lpszExtraInfo != nullptr) path += std::wstring (uc.lpszExtraInfo, uc.dwExtraInfoLength);
+        HINTERNET s = WinHttpOpen (L"Ampire/" JucePlugin_VersionString, WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+        if (s == nullptr) s = WinHttpOpen (L"Ampire/" JucePlugin_VersionString, WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+        if (s == nullptr) { err = "WinHTTP unavailable (" + juce::String ((int) GetLastError()) + ")"; return false; }
+        DWORD protocols = WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_2 | WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_3;
+        if (! WinHttpSetOption (s, WINHTTP_OPTION_SECURE_PROTOCOLS, &protocols, sizeof (protocols)))
+        {
+            protocols = WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_2;
+            WinHttpSetOption (s, WINHTTP_OPTION_SECURE_PROTOCOLS, &protocols, sizeof (protocols));
+        }
+        WinHttpSetTimeouts (s, 15000, 20000, 30000, 60000);
+        HINTERNET c = WinHttpConnect (s, host.c_str(), uc.nPort, 0);
+        HINTERNET r = c != nullptr ? WinHttpOpenRequest (c, method.toWideCharPointer(), path.c_str(), nullptr, WINHTTP_NO_REFERER,
+                                                         WINHTTP_DEFAULT_ACCEPT_TYPES, uc.nScheme == INTERNET_SCHEME_HTTPS ? WINHTTP_FLAG_SECURE : 0)
+                                   : nullptr;
+        bool ok = r != nullptr;
+        if (ok)
+        {
+            const std::wstring wh (headers.toWideCharPointer());
+            ok = WinHttpSendRequest (r, wh.empty() ? WINHTTP_NO_ADDITIONAL_HEADERS : wh.c_str(), wh.empty() ? 0 : (DWORD) -1L,
+                                     body.getSize() > 0 ? const_cast<void*> (body.getData()) : WINHTTP_NO_REQUEST_DATA,
+                                     (DWORD) body.getSize(), (DWORD) body.getSize(), 0)
+              && WinHttpReceiveResponse (r, nullptr);
+        }
+        if (! ok) err = "WinHTTP error " + juce::String ((int) GetLastError());
+        else
+        {
+            DWORD code = 0, sz = sizeof (code);
+            WinHttpQueryHeaders (r, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER, WINHTTP_HEADER_NAME_BY_INDEX, &code, &sz, WINHTTP_NO_HEADER_INDEX);
+            status = (int) code;
+            juce::HeapBlock<char> buf (65536);
+            for (;;)
+            {
+                if (cancel != nullptr && cancel->load()) break;
+                DWORD rd = 0;
+                if (! WinHttpReadData (r, buf.getData(), 65536, &rd) || rd == 0) break;
+                if (! out.write (buf.getData(), rd)) { ok = false; err = "write error"; break; }
+            }
+        }
+        if (r != nullptr) WinHttpCloseHandle (r);
+        if (c != nullptr) WinHttpCloseHandle (c);
+        WinHttpCloseHandle (s);
+        return ok;
+       #else
+        juce::URL u (address);
+        if (body.getSize() > 0) u = u.withPOSTData (body);
         const auto opts = juce::URL::InputStreamOptions (juce::URL::ParameterHandling::inAddress)
                               .withExtraHeaders (headers)
                               .withConnectionTimeoutMs (20000)
                               .withStatusCode (&status)
-                              .withHttpRequestCmd (form != nullptr ? "POST" : "GET");
+                              .withHttpRequestCmd (method);
         auto in = u.createInputStream (opts);
-        if (in == nullptr) { lastHttpError = "no connection"; logLine (address + " : no connection"); return {}; }
-        const auto text = in->readEntireStreamAsString();
+        if (in == nullptr) { err = "no connection"; return false; }
+        juce::HeapBlock<char> buf (65536);
+        for (;;)
+        {
+            if (cancel != nullptr && cancel->load()) break;
+            const int n = in->read (buf.getData(), 65536);
+            if (n <= 0) break;
+            if (! out.write (buf.getData(), (size_t) n)) { err = "write error"; return false; }
+        }
+        if (status == 0) status = 200;
+        return true;
+       #endif
+    }
+
+    // requete JSON (GET, ou POST de formulaire si form != nullptr)
+    juce::var httpJson (const juce::String& address, const juce::String& bearer, int& status, const juce::StringPairArray* form = nullptr)
+    {
+        juce::String headers = "Accept: application/json\r\n";
+        if (bearer.isNotEmpty()) headers << "Authorization: Bearer " << bearer << "\r\n";
+        juce::MemoryBlock body;
+        if (form != nullptr)
+        {
+            juce::String b;
+            for (auto& k : form->getAllKeys())
+                b << (b.isEmpty() ? "" : "&") << juce::URL::addEscapeChars (k, true) << "=" << juce::URL::addEscapeChars ((*form)[k], true);
+            body.append (b.toRawUTF8(), b.getNumBytesAsUTF8());
+            headers << "Content-Type: application/x-www-form-urlencoded\r\n";
+        }
+        juce::MemoryOutputStream mo;
+        juce::String e;
+        if (! httpRequest (form != nullptr ? "POST" : "GET", address, headers, body, status, mo, e))
+        {
+            lastHttpError = e;
+            logLine (address.upToFirstOccurrenceOf ("?", false, false) + " : " + e);
+            status = 0;
+            return {};
+        }
+        const auto text = mo.toString();
         auto v = juce::JSON::parse (text);
-        const bool err = (status != 0 && (status < 200 || status >= 300)) || v.isVoid() || v.hasProperty ("error");
-        if (status == 0 && ! err) status = 200;
+        const bool err = status < 200 || status >= 300 || v.isVoid() || v.hasProperty ("error");
         if (err)
         {
             lastHttpError = "HTTP " + juce::String (status);
@@ -756,15 +847,18 @@ void Client::runSync (Tone t)
             for (int attempt = 0; attempt < 2 && ! ok && ! quitting; ++attempt)
             {
                 int status = 0;
-                juce::String headers = "Authorization: Bearer " + accessToken() + "\r\n";
-                auto in = juce::URL (str (m["model_url"])).createInputStream (juce::URL::InputStreamOptions (juce::URL::ParameterHandling::inAddress)
-                                                                                 .withExtraHeaders (headers).withConnectionTimeoutMs (30000).withStatusCode (&status));
-                if (in != nullptr && status >= 200 && status < 300)
+                const juce::String headers = "Authorization: Bearer " + accessToken() + "\r\n";
+                part.deleteFile();
+                juce::String e;
                 {
-                    part.deleteFile();
                     juce::FileOutputStream os (part);
-                    if (os.openedOk() && os.writeFromInputStream (*in, -1) > 0) { os.flush(); ok = ! os.getStatus().failed(); }
+                    if (os.openedOk() && httpRequest ("GET", str (m["model_url"]), headers, {}, status, os, e, &quitting) && status >= 200 && status < 300)
+                    {
+                        os.flush();
+                        ok = ! os.getStatus().failed() && os.getPosition() > 0;
+                    }
                 }
+                if (! ok) logLine ("download " + str (m["name"]) + " : " + (e.isNotEmpty() ? e : "HTTP " + juce::String (status)));
                 if (status == 401) refreshToken();
             }
             if (! ok) { part.deleteFile(); fail ("Download failed: " + str (m["name"])); return; }
@@ -816,14 +910,17 @@ juce::Image Client::getImage (const juce::String& url)
     {
         juce::Image img;
         if (! quitting)
-            if (auto in = juce::URL (url).createInputStream (juce::URL::InputStreamOptions (juce::URL::ParameterHandling::inAddress).withConnectionTimeoutMs (15000)))
+        {
+            juce::MemoryOutputStream mo;
+            int status = 0;
+            juce::String e;
+            if (httpRequest ("GET", url, {}, {}, status, mo, e, &quitting) && status >= 200 && status < 300)
             {
-                juce::MemoryBlock mb;
-                in->readIntoMemoryBlock (mb, 8 * 1024 * 1024);
-                img = juce::ImageFileFormat::loadFrom (mb.getData(), mb.getSize());
+                img = juce::ImageFileFormat::loadFrom (mo.getData(), mo.getDataSize());
                 if (img.isValid() && img.getWidth() > 640)
                     img = img.rescaled (640, juce::jmax (1, img.getHeight() * 640 / img.getWidth()), juce::Graphics::highResamplingQuality);
             }
+        }
         {
             const juce::ScopedLock sl (lock);
             pendingImages.removeString (url);
