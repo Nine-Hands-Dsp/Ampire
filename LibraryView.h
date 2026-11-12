@@ -450,6 +450,9 @@ private:
         placeSearch();
         repaint();
     }
+    // fenetre flottante : plus de parent, on passe par le composant d'origine dans Ampire (menus, choix du dossier)
+    juce::Component* anchor() { if (floating) if (auto* h = homeParent.getComponent()) return h; return this; }
+    AmpireEditor* editor() { auto* a = anchor(); if (auto* ed = dynamic_cast<AmpireEditor*> (a)) return ed; return a->findParentComponentOfClass<AmpireEditor>(); }
     void endFloat()
     {
         if (! floating) return;
@@ -1235,7 +1238,7 @@ private:
             case hClose: close(); return;
             case hFolderBtn: folderMenu(); break;
             case hRescan: proc.library.rescan(); break;
-            case hChoose: if (auto* ed = findParentComponentOfClass<AmpireEditor>()) ed->chooseFolder (true); break;
+            case hChoose: if (auto* ed = editor()) ed->chooseFolder (true); break;
             case hCol1:
                 if (col1[h.index].key != sel1) { sel1 = col1[h.index].key; sel2.clear(); sc2 = sc3 = 0; }
                 if (! search.isEmpty()) search.clear();
@@ -1251,7 +1254,7 @@ private:
             case hConnect: client->signIn (false); break;
             case hCancel: client->cancelSignIn(); break;
             case hBrowse:
-                if (! proc.library.getRoot().isDirectory()) { if (auto* ed = findParentComponentOfClass<AmpireEditor>()) ed->chooseFolder (true); break; }
+                if (! proc.library.getRoot().isDirectory()) { if (auto* ed = editor()) ed->chooseFolder (true); break; }
                 client->signIn (true);
                 break;
             case hSignOut: client->signOut(); break;
@@ -1275,7 +1278,7 @@ private:
         {
             case csSync: case csUpdate: case csFailed:
             {
-                if (! proc.library.getRoot().isDirectory()) { if (auto* ed = findParentComponentOfClass<AmpireEditor>()) ed->chooseFolder (true); return; }
+                if (! proc.library.getRoot().isDirectory()) { if (auto* ed = editor()) ed->chooseFolder (true); return; }
                 t3k::Local l;
                 if (! client->findLocal (t.id, l) && client->getAskFolderName()) openDialog (1, t);
                 else client->sync (t);
@@ -1318,10 +1321,10 @@ private:
         mm.addItem (2, "Load a single file...");
         mm.addItem (3, "Show capture folder", root.isDirectory());
         juce::Component::SafePointer<LibraryPanel> sp (this);
-        MenuStyle::styled (mm, menuLookFor (this)).showMenuAsync (juce::PopupMenu::Options(), [sp] (int r)
+        MenuStyle::styled (mm, menuLookFor (anchor())).showMenuAsync (juce::PopupMenu::Options(), [sp] (int r)
         {
             if (sp == nullptr) return;
-            if (r == 1) { if (auto* ed = sp->findParentComponentOfClass<AmpireEditor>()) ed->chooseFolder (true); }
+            if (r == 1) { if (auto* ed = sp->editor()) ed->chooseFolder (true); }
             else if (r == 3) sp->proc.library.getRoot().revealToUser();
             else if (r == 2)
             {
@@ -1349,11 +1352,11 @@ private:
         mm.addSeparator();
         mm.addItem (3, "Update all synced tones");
         juce::Component::SafePointer<LibraryPanel> sp (this);
-        MenuStyle::styled (mm, menuLookFor (this)).showMenuAsync (juce::PopupMenu::Options(), [sp] (int r)
+        MenuStyle::styled (mm, menuLookFor (anchor())).showMenuAsync (juce::PopupMenu::Options(), [sp] (int r)
         {
             if (sp == nullptr || r <= 0) return;
             auto& c = *sp->client;
-            if (! sp->proc.library.getRoot().isDirectory()) { if (auto* ed = sp->findParentComponentOfClass<AmpireEditor>()) ed->chooseFolder (true); return; }
+            if (! sp->proc.library.getRoot().isDirectory()) { if (auto* ed = sp->editor()) ed->chooseFolder (true); return; }
             if (r == 1)
             {
                 sp->proc.library.rescan();
@@ -1382,7 +1385,7 @@ private:
         const char* desc[] = { "Best version (A2, else A1)", "A2 only", "A1 only", "Custom only", "All versions" };
         for (int i = 0; i < t3k::numVersionModes; ++i) mm.addItem (i + 1, desc[i], true, client->getVersionMode() == i);
         juce::Component::SafePointer<LibraryPanel> sp (this);
-        MenuStyle::styled (mm, menuLookFor (this)).showMenuAsync (juce::PopupMenu::Options(), [sp] (int r)
+        MenuStyle::styled (mm, menuLookFor (anchor())).showMenuAsync (juce::PopupMenu::Options(), [sp] (int r)
         {
             if (sp != nullptr && r > 0) { sp->client->setVersionMode (r - 1); sp->repaint(); }
         });
@@ -1404,7 +1407,7 @@ private:
             mm.addItem (3, "Show in folder");
             mm.addSeparator();
             mm.addItem (red (4, "Delete capture..."));
-            MenuStyle::styled (mm, menuLookFor (this)).showMenuAsync (juce::PopupMenu::Options(), [sp, r, i = h.index] (int res)
+            MenuStyle::styled (mm, menuLookFor (anchor())).showMenuAsync (juce::PopupMenu::Options(), [sp, r, i = h.index] (int res)
             {
                 if (sp == nullptr) return;
                 if (res == 1) sp->loadRow (i, false);
@@ -1423,7 +1426,7 @@ private:
             mm.addItem (2, "Rename folder...");
             mm.addSeparator();
             mm.addItem (red (3, "Delete folder..."));
-            MenuStyle::styled (mm, menuLookFor (this)).showMenuAsync (juce::PopupMenu::Options(), [sp, f, n] (int res)
+            MenuStyle::styled (mm, menuLookFor (anchor())).showMenuAsync (juce::PopupMenu::Options(), [sp, f, n] (int res)
             {
                 if (sp == nullptr) return;
                 if (res == 1) f.revealToUser();
@@ -1442,7 +1445,7 @@ private:
             mm.addItem (3, "Open on TONE3000");
             mm.addSeparator();
             mm.addItem (5, "Ask for the folder name when syncing", true, client->getAskFolderName());
-            MenuStyle::styled (mm, menuLookFor (this)).showMenuAsync (juce::PopupMenu::Options(), [sp, t, have, folder = l.folder] (int res)
+            MenuStyle::styled (mm, menuLookFor (anchor())).showMenuAsync (juce::PopupMenu::Options(), [sp, t, have, folder = l.folder] (int res)
             {
                 if (sp == nullptr) return;
                 if (res == 1) { if (! have && sp->client->getAskFolderName()) sp->openDialog (1, t); else sp->client->sync (t); }

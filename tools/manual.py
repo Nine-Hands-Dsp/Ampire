@@ -17,7 +17,7 @@ from reportlab.pdfbase.ttfonts import TTFont
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SHOTS, OUT = sys.argv[1], sys.argv[2]
-VERSION = "1.1.8"
+VERSION = "1.1.9"
 TMP = os.path.dirname(os.path.abspath(OUT))
 MA = os.path.join(ROOT, "tools", "manual_assets")
 for n, f in (("Pop", os.path.join(ROOT, "assets", "Poppins-Regular.ttf")), ("PopM", os.path.join(ROOT, "assets", "Poppins-Medium.ttf")),
