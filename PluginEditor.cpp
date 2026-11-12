@@ -1380,11 +1380,11 @@ AmpireEditor::AmpireEditor (AmpireProcessor& p) : AudioProcessorEditor (&p), pro
     addAndMakeVisible (*content);
     setResizable (true, true);
     // jamais plus petit que la taille par defaut (« 60 % »)
-    setResizeLimits (kWin, kWinH, (int) std::lround (kWin * 2.2f), (int) std::lround (kWinH * 2.2f));
+    setResizeLimits (kWin, kWinH, (int) std::lround (kWin * 2.5f), (int) std::lround (kWinH * 2.5f));   // jusqu'a 150 %
+    hostLock.setLimits (kWin, kWinH, (int) std::lround (kWin * 2.5f), (int) std::lround (kWinH * 2.5f));
     getConstrainer()->setFixedAspectRatio ((double) kVisW / (double) kVisH);
-    const int saved = juce::jlimit (-1, 2, proc.uiScaleIdx.load());
-    if (saved >= 0) setScaleIndex (saved);
-    else            applyScaleIndex (WigaWindowSize::defaultIndex (JucePlugin_Name, numSizes));
+    // taille choisie au menu pour ce projet, sinon celle de « Default size (new windows) »
+    applyScaleIndex (NineHandsWindow::openIndex (JucePlugin_Name, proc.uiScaleIdx.load(), numSizes));
 }
 
 AmpireEditor::~AmpireEditor()
@@ -1414,6 +1414,7 @@ void AmpireEditor::checkRenderer()
 {
     if ((void*) getPeer() != lastPeer || juce::Time::getMillisecondCounter() - lastRendererCheck >= 1000)
         useSoftwareRenderer();
+    hostLock.track (*this);
 }
 
 void AmpireEditor::resetRenderer()
@@ -1508,7 +1509,7 @@ void AmpireEditor::openColourPicker (juce::Component* near, int which)
     addAndMakeVisible (layer);
     layer->toFront (true);
 }
-void AmpireEditor::parentHierarchyChanged() { useSoftwareRenderer(); }
+void AmpireEditor::parentHierarchyChanged() { useSoftwareRenderer(); hostLock.track (*this); }
 void AmpireEditor::visibilityChanged() { useSoftwareRenderer(); if (isShowing()) repaint(); }
 
 void AmpireEditor::resized()
@@ -1528,7 +1529,8 @@ void AmpireEditor::setStackConstraints (bool stacked)
 {
     const double aspect = stacked ? (double) kVisW / ((double) kVisH + (double) kVisW / kImpulseAspect) : (double) kVisW / (double) kVisH;
     const int minH = stacked ? kWinH + impulseHeight (kWin) : kWinH;
-    setResizeLimits (kWin, minH, (int) std::lround (kWin * 2.2f), (int) std::lround (minH * 2.2f));
+    setResizeLimits (kWin, minH, (int) std::lround (kWin * 2.5f), (int) std::lround (minH * 2.5f));
+    hostLock.setLimits (kWin, minH, (int) std::lround (kWin * 2.5f), (int) std::lround (minH * 2.5f));
     getConstrainer()->setFixedAspectRatio (aspect);
     // pas de poignee d'agrandissement en mode stack (elle tomberait entre Ampire et Impulse) ;
     // la fenetre reste redimensionnable par ses bords et par Plugin size
@@ -1634,6 +1636,7 @@ void AmpireEditor::applyScaleIndex (int idx)
     idx = juce::jlimit (0, numSizes - 1, idx);
     const int w = (int) std::lround (kWin * kScales[idx]);
     setSize (w, ampireHeight (w) + (stackShown ? impulseHeight (w) : 0));
+    hostLock.enforce();
 }
 
 // ============================================================================ menus clic droit
@@ -1663,8 +1666,8 @@ static void addSizeItems (juce::PopupMenu& m, juce::Component& c)
     juce::PopupMenu defSizes;
     for (int i = 0; i < AmpireEditor::numSizes; ++i)
     {
-        m.addItem (101 + i, juce::String (names[i]) + (i == def ? "  (default)" : ""), true, cur == i);
-        defSizes.addItem (120 + i, names[i], true, i == def);
+        m.addItem (NineHandsWindow::idSize + i, juce::String (names[i]) + (i == def ? "  (default)" : ""), true, cur == i);
+        defSizes.addItem (NineHandsWindow::idDefault + i, names[i], true, i == def);
     }
     m.addSeparator();
     m.addSubMenu ("Default size (new windows)", defSizes);
@@ -1676,24 +1679,25 @@ static bool handleSizeChoice (int r, juce::Component* c)
     auto* ed = c->findParentComponentOfClass<AmpireEditor>();
     if (ed == nullptr) ed = dynamic_cast<AmpireEditor*> (c);
     if (ed == nullptr) return false;
-    if (r >= 101 && r <= 103) { ed->setScaleIndex (r - 101); return true; }
-    if (r >= 120 && r < 120 + AmpireEditor::numSizes)
-    {
-        WigaWindowSize::setDefaultIndex (JucePlugin_Name, r - 120);
-        ed->setScaleIndex (-1);
-        return true;
-    }
-    return false;
+    int inst = ed->getProc().uiScaleIdx.load();
+    const int sz = NineHandsWindow::handleSize (r, JucePlugin_Name, AmpireEditor::numSizes, inst);
+    if (sz < 0) return false;
+    ed->setScaleIndex (inst);                  // -1 = suit la taille par defaut (ne fige pas l'instance)
+    return true;
 }
 
 static void addMidiItems (juce::PopupMenu& midi, AmpireProcessor& p)
 {
+    auto assign = [&p] (int i) { const auto a = p.learnAssignText (i); return a == "none" ? juce::String ("not assigned") : a; };
+    midi.addSectionHeader ("MIDI Learn");
     for (int i = 0; i < AmpireProcessor::numLearn; ++i)
-        midi.addItem (1000 + i, juce::String ("Learn: ") + AmpireProcessor::learnDef (i).name + " (" + p.learnAssignText (i) + ")", true, p.learnTarget.load() == i);
+        midi.addItem (1000 + i, juce::String ("Learn: ") + AmpireProcessor::learnDef (i).name + "  (" + assign (i) + ")", true, p.learnTarget.load() == i);
     midi.addSeparator();
-    if (p.learnTarget.load() >= 0) midi.addItem (1200, "Cancel MIDI learn");
-    midi.addItem (1202, "Footswitch momentary (each press toggles)", true, p.toggleMomentary.load());
+    midi.addItem (1200, "Cancel MIDI learn", p.learnTarget.load() >= 0);
     midi.addItem (1201, "Clear all MIDI assignments");
+    midi.addSeparator();
+    midi.addItem (1203, "MIDI footswitch latching (127 = on / 0 = off)", true, ! p.toggleMomentary.load());
+    midi.addItem (1202, "MIDI footswitch momentary (toggle each press)", true, p.toggleMomentary.load());
 }
 
 static bool handleLearnChoice (int r, AmpireProcessor* p)
@@ -1703,38 +1707,34 @@ static bool handleLearnChoice (int r, AmpireProcessor* p)
     else if (r >= 1100 && r < 1100 + AmpireProcessor::numLearn) p->clearLearn (r - 1100);
     else if (r == 1200) p->learnTarget.store (-1);
     else if (r == 1201) p->resetMidiMap();
-    else if (r == 1202) p->toggleMomentary = ! p->toggleMomentary.load();
+    else if (r == 1202) p->toggleMomentary = true;
+    else if (r == 1203) p->toggleMomentary = false;
     return true;
 }
+
+// menu d'une commande (tronc commun) : en-tete, MIDI Learn, Clear MIDI, Cancel MIDI learn
+static juce::PopupMenu buildControlMenu (AmpireProcessor& p, int learnIdx)
+{
+    juce::PopupMenu m;
+    const juce::String name = AmpireProcessor::learnDef (learnIdx).name;
+    const auto a = p.learnAssignText (learnIdx);
+    MenuStyle::header (m, MenuStyle::icoParams, name, "MIDI: " + (a == "none" ? juce::String ("not assigned") : a));
+    m.addItem (1000 + learnIdx, "MIDI Learn: " + name, true, p.learnTarget.load() == learnIdx);
+    m.addItem (1100 + learnIdx, "Clear MIDI: " + name, a != "none");
+    m.addItem (1200, "Cancel MIDI learn", p.learnTarget.load() >= 0);
+    return m;
+}
+
+static juce::PopupMenu buildGearMenu (juce::Component& c, AmpireProcessor* p);
 
 static void showContextMenu (juce::Component& c, int learnIdx)
 {
     // un seul menu dans tout le plugin : clic droit n'importe ou = menu des reglages (MIDI Learn de chaque commande
     // dans son sous-menu MIDI)
-    juce::ignoreUnused (learnIdx);
-    showGearMenu (c);
-    return;
+    if (learnIdx < 0) { showGearMenu (c); return; }
     auto* p = procFor (&c);
     if (p == nullptr) return;
-    juce::PopupMenu m;
-    if (learnIdx >= 0)
-    {
-        const juce::String name = AmpireProcessor::learnDef (learnIdx).name;
-        m.addSectionHeader (name);
-        m.addItem (1000 + learnIdx, "MIDI Learn: " + name + " (" + p->learnAssignText (learnIdx) + ")", true, p->learnTarget.load() == learnIdx);
-        m.addItem (1100 + learnIdx, "Clear MIDI: " + name, p->learnAssignText (learnIdx) != "none");
-        if (p->learnTarget.load() >= 0) m.addItem (1200, "Cancel MIDI learn");
-        m.addSeparator();
-    }
-    m.addSectionHeader ("Plugin size");
-    addSizeItems (m, c);
-    if (learnIdx < 0)
-    {
-        m.addSeparator();
-        juce::PopupMenu midi;
-        addMidiItems (midi, *p);
-        m.addSubMenu ("MIDI", midi);
-    }
+    auto m = buildControlMenu (*p, learnIdx);
     juce::Component::SafePointer<juce::Component> sp (&c);
     MenuStyle::styled (m, menuLookFor (&c)).showMenuAsync (juce::PopupMenu::Options(), [sp, p] (int r)
     {
@@ -1744,58 +1744,70 @@ static void showContextMenu (juce::Component& c, int learnIdx)
     });
 }
 
-static void showGearMenu (juce::Component& c)
+static juce::PopupMenu buildGearMenu (juce::Component& c, AmpireProcessor* p)
 {
-    auto* p = procFor (&c);
-    if (p == nullptr) return;
     auto& ap = p->apvts;
     auto val = [&ap] (const char* id) { return ap.getRawParameterValue (id)->load(); };
     const int lows[] = { 20, 40, 60, 80, 100, 120, 150 };
     const int highs[] = { 20000, 12000, 10000, 8000, 7000, 6000, 5000 };
 
-    juce::PopupMenu m, aaM, outM, inM, calM, lowM, highM, sizeM, midi, folderM;
-    MenuStyle::header (m, MenuStyle::icoParams, "Ampire", juce::String::fromUTF8 ("NINE HANDS | DSP  \xc2\xb7  v" JucePlugin_VersionString));
+    juce::PopupMenu m, engine, aaM, outM, inM, calM, lowM, highM, sizeM, midi;
+    MenuStyle::header (m, MenuStyle::icoParams, "Ampire", "NAM loader  v" JucePlugin_VersionString);
     {
-        juce::PopupMenu presetM;
+        // presets utilisateur (nommes) : Load user preset / Save user preset
+        juce::PopupMenu loadM, saveM;
         const auto names = p->getPresetNames();
         const auto cur = p->getPresetName();
-        presetM.addItem (800, "Init (empty)");
-        presetM.addSeparator();
-        if (names.isEmpty()) presetM.addItem (899, "No preset saved yet", false);
-        for (int i = 0; i < juce::jmin (names.size(), 99); ++i) presetM.addItem (900 + i, names[i], true, names[i] == cur);
-        presetM.addSeparator();
-        presetM.addItem (801, "Save preset as...");
-        presetM.addItem (802, "Save \"" + cur + "\"", cur.isNotEmpty());
-        presetM.addItem (803, "Delete \"" + cur + "\"", cur.isNotEmpty());
-        presetM.addItem (804, "Open presets folder");
-        m.addSubMenu ("Presets" + (cur.isNotEmpty() ? juce::String (" (") + cur + (p->isPresetDirty() ? " *" : "") + ")" : juce::String()), presetM);
+        loadM.addItem (800, "Init (empty)");
+        loadM.addSeparator();
+        if (names.isEmpty()) loadM.addItem (899, "No preset saved yet", false);
+        for (int i = 0; i < juce::jmin (names.size(), 99); ++i) loadM.addItem (900 + i, names[i], true, names[i] == cur);
+        saveM.addItem (801, "Save preset as...");
+        saveM.addItem (802, "Save \"" + cur + "\"" + (p->isPresetDirty() ? "  *" : ""), cur.isNotEmpty());
+        saveM.addItem (803, "Delete \"" + cur + "\"", cur.isNotEmpty());
+        saveM.addSeparator();
+        saveM.addItem (804, "Open presets folder");
+        m.addSubMenu ("Load user preset", loadM);
+        m.addSubMenu ("Save user preset", saveM);
         m.addSeparator();
     }
-    // anti-repliement
+    // Engine : anti-repliement, niveaux, entree, filtres, tone stack
     const int os = (int) std::lround (val ("oversample"));
     aaM.addItem (30, "Off (lowest CPU)", true, os == 0);
     aaM.addItem (31, "2x (recommended)", true, os == 1);
     aaM.addItem (32, "4x (best, high gain)", true, os == 2);
-    m.addSubMenu ("Anti-aliasing (oversampling, 0 latency)", aaM);
-    // niveaux
+    engine.addSubMenu ("Anti-aliasing (oversampling, 0 latency)", aaM);
     const int om = (int) std::lround (val ("outmode"));
     outM.addItem (33, "Raw (capture as recorded)", true, om == 0);
     outM.addItem (34, "Normalized (all captures at the same loudness)", true, om == 1);
     outM.addItem (35, "Calibrated (dBu levels of the capture)", true, om == 2);
-    m.addSubMenu ("Output level", outM);
+    engine.addSubMenu ("Output level", outM);
     calM.addItem (36, "Calibrate input to each capture", true, val ("calin") > 0.5f);
     calM.addSeparator();
     const float cl = val ("callevel");
     const float levels[] = { 0.0f, 6.0f, 9.0f, 12.0f, 15.0f, 18.0f, 20.0f, 24.0f };
     for (int i = 0; i < 8; ++i) calM.addItem (40 + i, "Interface: 0 dBFS = +" + juce::String ((int) levels[i]) + " dBu", true, std::abs (cl - levels[i]) < 0.05f);
-    m.addSubMenu ("Input calibration", calM);
+    engine.addSubMenu ("Input calibration", calM);
     const int is = (int) std::lround (val ("inputsel"));
     inM.addItem (50, "Left", true, is == 0); inM.addItem (51, "Right", true, is == 1); inM.addItem (52, "L + R (sum)", true, is == 2);
-    m.addSubMenu ("Input channel", inM);
-    m.addItem (38, "Tone stack (BASS / MIDDLE / TREBLE)", true, val ("tonestack") > 0.5f);
+    engine.addSubMenu ("Input channel", inM);
+    engine.addSeparator();
+    for (int i = 0; i < 7; ++i) lowM.addItem (10 + i, i == 0 ? juce::String ("Off") : juce::String (lows[i]) + " Hz", true, std::abs (val ("lowcut") - (float) lows[i]) < 1.0f);
+    for (int i = 0; i < 7; ++i) highM.addItem (20 + i, i == 0 ? juce::String ("Off") : juce::String (highs[i] / 1000.0, 1).replace (".0", "") + " kHz", true, std::abs (val ("highcut") - (float) highs[i]) < 10.0f);
+    engine.addSubMenu ("High cut", highM);
+    engine.addSubMenu ("Low cut", lowM);
+    engine.addSeparator();
+    engine.addItem (38, "Tone stack (Bass / Middle / Treble)", true, val ("tonestack") > 0.5f);
+    m.addSubMenu ("Engine", engine);
     m.addSeparator();
+    addMidiItems (midi, *p);
+    m.addSubMenu ("MIDI", midi);
+    m.addSeparator();
+    addSizeItems (sizeM, c);
+    m.addSubMenu ("Plugin size", sizeM);
     {
         auto* edp = c.findParentComponentOfClass<AmpireEditor>();
+        if (edp == nullptr) edp = dynamic_cast<AmpireEditor*> (&c);
         const float lg = edp != nullptr ? edp->getLedGlow() : 1.0f;
         const char* glowNames[4] = { "Off", "Low", "Medium (design)", "High" };
         const float glowVals[4] = { 0.0f, 0.5f, 1.0f, 1.6f };
@@ -1806,29 +1818,19 @@ static void showGearMenu (juce::Component& c)
         colM.addSeparator();
         colM.addItem (70, "Meter LED colour...");
         colM.addItem (71, "Saturation LED colour (top 3)...");
-        m.addSubMenu ("Colours & glow", colM);
+        m.addSubMenu ("Glow intensity & Colours", colM);
     }
-    {
-        const auto root = p->library.getRoot();
-        folderM.addSectionHeader (root.isDirectory() ? root.getFullPathName() : juce::String ("No library folder"));
-        const auto info = p->getSlotInfo (0);
-        const juce::File cur (info.meta.path);
-        const bool canUse = info.loaded && ! info.fromEmbedded && juce::File::isAbsolutePath (info.meta.path)
-                            && cur.getParentDirectory().isDirectory() && cur.getParentDirectory() != root;
-        folderM.addItem (60, "Choose default capture folder...");
-        folderM.addItem (62, "Use this capture's folder as default", canUse);
-        folderM.addItem (61, "Rescan library");
-        m.addSubMenu ("Capture folder", folderM);
-    }
-    for (int i = 0; i < 7; ++i) lowM.addItem (10 + i, i == 0 ? juce::String ("Off") : juce::String (lows[i]) + " Hz", true, std::abs (val ("lowcut") - (float) lows[i]) < 1.0f);
-    for (int i = 0; i < 7; ++i) highM.addItem (20 + i, i == 0 ? juce::String ("Off") : juce::String (highs[i] / 1000.0, 1).replace (".0", "") + " kHz", true, std::abs (val ("highcut") - (float) highs[i]) < 10.0f);
-    m.addSubMenu ("Low cut", lowM);
-    m.addSubMenu ("High cut", highM);
-    m.addSeparator();
-    addMidiItems (midi, *p);
-    m.addSubMenu ("MIDI", midi);
-    addSizeItems (sizeM, c);
-    m.addSubMenu ("Plugin size", sizeM);
+    return m;
+}
+
+static void showGearMenu (juce::Component& c)
+{
+    auto* p = procFor (&c);
+    if (p == nullptr) return;
+    const int lows[] = { 20, 40, 60, 80, 100, 120, 150 };
+    const int highs[] = { 20000, 12000, 10000, 8000, 7000, 6000, 5000 };
+    const float levels[] = { 0.0f, 6.0f, 9.0f, 12.0f, 15.0f, 18.0f, 20.0f, 24.0f };
+    auto m = buildGearMenu (c, p);
     juce::Component::SafePointer<juce::Component> sp (&c);
     MenuStyle::styled (m, menuLookFor (&c)).showMenuAsync (juce::PopupMenu::Options(), [sp, p, lows, highs, levels] (int r)
     {
@@ -1862,4 +1864,9 @@ static void showGearMenu (juce::Component& c)
         else if (r >= 20 && r < 27) set ("highcut", (float) highs[r - 20]);
         else if (! handleLearnChoice (r, p)) handleSizeChoice (r, sp.getComponent());
     });
+}
+
+juce::PopupMenu AmpireEditor::buildContextMenu (int learnIdx)
+{
+    return learnIdx >= 0 ? buildControlMenu (proc, learnIdx) : buildGearMenu (*this, &proc);
 }

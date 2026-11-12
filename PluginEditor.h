@@ -1,5 +1,6 @@
 #pragma once
 #include "PluginProcessor.h"
+#include "NineHandsWindow.h"
 
 class AmpireContent;
 
@@ -13,6 +14,8 @@ public:
     void parentHierarchyChanged() override;
     void visibilityChanged() override;
 
+    juce::PopupMenu buildContextMenu (int learnIdx = -1);   // menu clic droit (aussi pour l'outil de controle des menus)
+    NineHandsWindow::HostLock hostLock;  // fenetre du DAW : jamais sous 60 %, jamais au-dela de 150 %
     int  getScaleIndex() const;          // 0, 1, 2 = 60 % / 75 % / 100 %  (-1 = taille libre)
     void setScaleIndex (int idx);
     void applyScaleIndex (int idx);

@@ -6,7 +6,7 @@ if(APPLE)
   set(CMAKE_OSX_DEPLOYMENT_TARGET "10.15" CACHE STRING "" FORCE)   # std::filesystem (NAM Core)
 endif()
 
-project(WigaAmpire VERSION 1.1.10)
+project(WigaAmpire VERSION 1.2.0)
 
 option(AMPIRE_TOOLS "Build the Linux render / test tools" OFF)
 set(CMAKE_CXX_STANDARD 20)
@@ -103,6 +103,17 @@ target_sources(Ampire PRIVATE
   CaptureLibrary.cpp
   Tone3000.cpp)
 
+
+# verrou de taille de la fenetre du DAW (jamais sous 60 %, jamais au-dela de 150 %)
+if(APPLE)
+  target_sources(Ampire PRIVATE WindowMinSize.mm)
+  target_link_libraries(Ampire PRIVATE "-framework Cocoa")
+else()
+  target_sources(Ampire PRIVATE WindowMinSize.cpp)
+endif()
+if(WIN32)
+  target_link_libraries(Ampire PRIVATE comctl32 user32)
+endif()
 # mode stack (NhdStack.h) : interface VST3 de REAPER (funknown.h du SDK VST3 fourni avec JUCE)
 target_include_directories(Ampire PRIVATE
   ${JUCE_SOURCE_DIR}/modules/juce_audio_processors_headless/format_types/VST3_SDK)
