@@ -17,7 +17,7 @@ from reportlab.pdfbase.ttfonts import TTFont
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SHOTS, OUT = sys.argv[1], sys.argv[2]
-VERSION = "1.1.6"
+VERSION = "1.1.7"
 TMP = os.path.dirname(os.path.abspath(OUT))
 MA = os.path.join(ROOT, "tools", "manual_assets")
 for n, f in (("Pop", os.path.join(ROOT, "assets", "Poppins-Regular.ttf")), ("PopM", os.path.join(ROOT, "assets", "Poppins-Medium.ttf")),
@@ -171,6 +171,7 @@ story += [P("4. Captures, bibliothèque et TONE3000", "h1"),
     P("La bibliothèque", "h2"), img(lib_img, W * 0.82), P("La bibliothèque : dossiers, sous-dossiers et captures.", "small"),
     P("Elle s'ouvre dans une fenêtre en verre fumé au-dessus d'Ampire (clic sur l'écran ou sur le bouton bibliothèque). L'onglet <b>Library</b> montre vos captures, l'onglet <b>TONE3000</b> le catalogue en ligne (plus bas)."),
     *bullets(["<b>Trois colonnes</b> : à gauche <b>Favourites</b>, <b>Recent</b> puis les dossiers de votre dossier de captures ; au milieu les sous-dossiers du dossier choisi ; à droite ses captures. Chaque colonne défile à la molette ; le chemin s'affiche au-dessus.",
+              "<b>Défilement</b> : à la molette, la bibliothèque s'agrandit vers le bas et déborde sous la fenêtre d'Ampire (environ 60 % de hauteur en plus, à la taille d'Ampire : 60, 75 ou 100 %), l'en-tête se réduit à une ligne ; 0,6 seconde après le dernier cran, elle reprend sa taille. Chaque barre de défilement peut aussi s'attraper à la souris (clic sur la barre pour sauter à un endroit, glisser pour défiler).",
               "<b>Recherche</b> (en haut) sur le nom, le matériel, le fabricant, le son, le dossier… dans toute la bibliothèque, plusieurs mots possibles.",
               "<b>Dossier</b> (icône à côté de la recherche) : choisir le dossier de vos captures (sous-dossiers compris, analysé en arrière-plan), charger un fichier isolé, ouvrir le dossier. <b>Rescan</b> relit le dossier.",
               "<b>Un clic</b> sur une capture la charge tout de suite (écoute rapide) et laisse la bibliothèque ouverte ; <b>double-clic</b> ou <b>Entrée</b> la charge et ferme la bibliothèque ; les flèches haut / bas du clavier passent d'une capture à l'autre en l'écoutant ; <b>Échap</b> ferme.",

@@ -272,10 +272,11 @@ public:
         if (tab == 1 && client->isSignedIn()) ensureLoaded (true);
         repaint();
     }
-    void close() { if (dlgMode != 0) { dlgMode = 0; placeSearch(); } setVisible (false); if (onClose) onClose(); }
+    void close() { if (dlgMode != 0) { dlgMode = 0; placeSearch(); } endFloat(); startTimerHz (10); setVisible (false); if (onClose) onClose(); }
     void setTab (int t) { tab = t; placeSearch(); if (tab == 1 && client->isSignedIn()) ensureLoaded (true); repaint(); }
    #if AMPIRE_TOOL
     void previewDemo (bool signedIn) { client->previewDemo (signedIn); repaint(); }
+    void previewExpanded() { ex = target = 1.0f; setSize (getWidth(), juce::roundToInt ((float) getHeight() * (lv::kMh + 522.0f * kGrow) / lv::kMh)); placeSearch(); repaint(); }
     void previewDialog (int mode)
     {
         if (mode >= 3) { const auto f = proc.library.getRoot().getChildFile ("Mesa Boogie Dual Rectifier Rev G"); openFileDialog (mode, mode == 4 ? f.getChildFile ("DI").getChildFile ("MESRectoRevG_Green_BalancedClean_DI.nam") : f, 4); return; }
@@ -289,10 +290,11 @@ public:
     void paint (juce::Graphics& g) override
     {
         using namespace lv;
-        g.addTransform (juce::AffineTransform::scale ((float) getWidth() / kMw, (float) getHeight() / kMh));
-        const auto panel = box (40, 36, 1454, 558);
+        const float s = (float) getWidth() / kMw;
+        g.addTransform (juce::AffineTransform::scale (s, s));
+        const auto panel = box (40, 36, 1454, 558 + extraH());
         g.setColour (juce::Colours::black.withAlpha (70.0f / 255.0f));
-        g.fillRect (box (0, 0, kMw, kMh));
+        g.fillRect (box (0, 0, kMw, kMh));            // seulement sur Ampire (la partie qui deborde reste transparente)
         juce::Path pp; pp.addRoundedRectangle (panel, 16.0f);
         juce::DropShadow (juce::Colours::black.withAlpha (0.55f), 26, { 6, 12 }).drawForPath (g, pp);
         {
@@ -302,8 +304,16 @@ public:
             if (backdrop.isValid()) g.drawImage (backdrop, box (0, 0, kMw, kMh));
             g.setColour (BG.withAlpha (198.0f / 255.0f));
             g.fillRect (panel);
+            if (extraH() > 0.5f)     // sous Ampire : fond sombre opaque, fondu au bord de la fenetre
+            {
+                g.setGradientFill (juce::ColourGradient (BG.withAlpha (0.0f), 0, kMh - 34, BG, 0, kMh - 4, false));
+                g.fillRect (box (40, kMh - 34, 1454, kMh - 4));
+                g.setColour (BG);
+                g.fillRect (box (40, kMh - 4, 1454, panel.getBottom()));
+            }
         }
         rr (g, panel, 16, {}, BORDER, 2);
+        if (compact()) { paintCompactHeader (g); if (tab == 0) paintLibrary (g); else paintTone3000 (g); return; }
 
         // en-tete commun
         rr (g, box (62, 56, 106, 100), 10, tint (ACC, 0.16f), tint (ACC, 0.7f), 2);
@@ -327,12 +337,16 @@ public:
     }
 
     // ======================================================================== souris / clavier
-    void mouseMove (const juce::MouseEvent& e) override { setHover (hitAt (m (e))); }
+    void mouseMove (const juce::MouseEvent& e) override { setHover (scrollbarAt (m (e)) != 0 ? Hit { hScroll } : hitAt (m (e))); }
+    void mouseDrag (const juce::MouseEvent& e) override { if (dragWhich != 0) { if (floating) lastWheel = juce::Time::getMillisecondCounter(); dragScroll (dragWhich, m (e).y, false); } }
+    void mouseUp (const juce::MouseEvent&) override { dragWhich = 0; }
     void mouseExit (const juce::MouseEvent&) override  { setHover ({}); }
     void mouseDown (const juce::MouseEvent& e) override
     {
-        const auto h = hitAt (m (e));
         tipShown = false;
+        if (dlgMode == 0 && ! e.mods.isPopupMenu())
+            if (const int w = scrollbarAt (m (e))) { dragScroll (w, m (e).y, true); return; }
+        const auto h = hitAt (m (e));
         if (e.mods.isPopupMenu()) { contextMenu (h); return; }
         click (h, e.getNumberOfClicks() >= 2);
     }
@@ -341,6 +355,13 @@ public:
         if (dlgMode != 0) return;
         const auto p = m (e);
         tipShown = false;
+        lastWheel = juce::Time::getMillisecondCounter();
+        if (! floating)
+        {
+            juce::Component::SafePointer<LibraryPanel> sp (this);
+            juce::MessageManager::callAsync ([sp] { if (sp != nullptr && sp->isShowing()) { sp->startFloat(); sp->target = 1.0f; sp->startTimerHz (60); } });
+        }
+        else target = 1.0f;
         const float d = -w.deltaY * 260.0f;
         if (tab == 0)
         {
@@ -362,7 +383,7 @@ public:
 private:
     // ---------------------------------------------------------------- zones cliquables
     enum HitKind { hNone, hTab0, hTab1, hClose, hFolderBtn, hRescan, hCol1, hCol2, hRowStar, hRow,
-                   hPill, hVersions, hBrowse, hAvatar, hSignOut, hCard, hCardBtn, hConnect, hCancel, hRetry, hChoose, hResync,
+                   hPill, hVersions, hBrowse, hAvatar, hSignOut, hCard, hCardBtn, hConnect, hCancel, hRetry, hChoose, hResync, hScroll,
                    hDlgCancel, hDlgOk, hDlgCheck, hDlgBlock };
     struct Hit
     {
@@ -375,15 +396,15 @@ private:
 
     static float kSx() { return 750.0f / lv::kMw; }
     static float kSy() { return 300.0f / lv::kMh; }
-    juce::Point<float> m (const juce::MouseEvent& e) const { return { e.position.x * lv::kMw / (float) juce::jmax (1, getWidth()), e.position.y * lv::kMh / (float) juce::jmax (1, getHeight()) }; }
+    juce::Point<float> m (const juce::MouseEvent& e) const { const float k = lv::kMw / (float) juce::jmax (1, getWidth()); return { e.position.x * k, e.position.y * k }; }
     void setHover (Hit h) { if (h != hover) { hover = h; hoverSince = juce::Time::getMillisecondCounter(); tipShown = false; repaint(); } }
 
     void placeSearch()
     {
-        const float sx = (float) getWidth() / lv::kMw, sy = (float) getHeight() / lv::kMh;
+        const float sx = (float) getWidth() / lv::kMw, sy = sx;
         search.setBounds (juce::Rectangle<float> (924 * sx, 58 * sy, 346 * sx, 40 * sy).toNearestInt());
         search.setFont (lv::pop (0, 16.0f * sy));
-        search.setVisible (tab == 0 && dlgMode == 0);
+        search.setVisible (tab == 0 && dlgMode == 0 && ! floating);
         nameEd.setBounds (juce::Rectangle<float> (489 * sx, 274 * sy, 520 * sx, 38 * sy).toNearestInt());
         nameEd.setFont (lv::pop (0, 16.0f * sy));
         nameEd.setVisible (dlgMode != 0);
@@ -406,17 +427,145 @@ private:
     }
 
     // ================================================================ LIBRARY (3 colonnes)
-    static constexpr float kItemH = 46.0f, kTop = 166.0f, kVisible = 372.0f;
-    float maxScroll (int n) const { return juce::jmax (0.0f, n * kItemH - 6.0f - kVisible); }
+    // ---- agrandissement pendant le defilement : la bibliotheque devient une fenetre flottante qui deborde sous Ampire
+    static constexpr float kGrow = 0.6f;                         // +60 % de la hauteur du panneau
+    float lift() const { return 82.0f * ex; }                    // en-tete reduit a une ligne
+    float extraH() const { return 522.0f * kGrow * ex; }         // hauteur ajoutee sous Ampire
+    bool compact() const { return ex > 0.02f; }
+    void startFloat()
+    {
+        auto* parent = getParentComponent();
+        if (floating || parent == nullptr || dlgMode != 0) return;
+        const auto sb = getScreenBounds();
+        if (sb.isEmpty()) return;
+        homeParent = parent;
+        const int h = juce::roundToInt ((float) sb.getHeight() * (lv::kMh + 522.0f * kGrow) / lv::kMh);
+        parent->removeChildComponent (this);
+        floating = true;
+        addToDesktop (juce::ComponentPeer::windowIsTemporary | juce::ComponentPeer::windowIgnoresKeyPresses);
+        setBounds (sb.withHeight (h));
+        setVisible (true);
+        placeSearch();
+        repaint();
+    }
+    void endFloat()
+    {
+        if (! floating) return;
+        floating = false;
+        ex = target = 0.0f;
+        removeFromDesktop();
+        if (auto* parent = homeParent.getComponent())
+        {
+            parent->addChildComponent (this);
+            setBounds (parent->getLocalBounds());
+            setVisible (true);
+            toFront (false);
+        }
+        placeSearch();
+        repaint();
+    }
+    bool hitTest (int x, int y) override
+    {
+        if (! floating) return true;
+        const float k = lv::kMw / (float) juce::jmax (1, getWidth());
+        return (float) y * k < lv::kMh || lv::box (40, 36, 1454, 558 + extraH()).contains ((float) x * k, (float) y * k);
+    }
+    void paintCompactHeader (juce::Graphics& g)
+    {
+        using namespace lv;
+        if (tab == 0)
+        {
+            juce::StringArray parts { proc.library.getRoot().getFileName() };
+            if (! search.isEmpty()) parts.add ("Search");
+            else
+            {
+                if (auto* it = findItem (col1, sel1)) parts.add (it->label);
+                if (auto* it = findItem (col2, sel2)) parts.add (it->label);
+            }
+            drawCrumbs (g, parts, 66, 66);
+        }
+        else
+        {
+            const char* n[] = { "Favorites", "Synced", "Created", "Trending", "Latest" };
+            text (g, "TONE3000", 66, 66, pop (2, 17), TXT);
+            text (g, juce::String::fromUTF8 ("\xc2\xb7  ") + n[ttab], 166, 67, pop (0, 13), DIM);
+            text (g, "Versions: " + t3k::Client::versionModeName (client->getVersionMode()), 1430, 67, pop (1, 13), DIM, 2, 400);
+        }
+    }
+    void drawCrumbs (juce::Graphics& g, const juce::StringArray& parts, float x, float cy)
+    {
+        using namespace lv;
+        float bx = x;
+        for (int i = 0; i < parts.size(); ++i)
+        {
+            if (i) { icon (g, iChev, bx + 8, cy, 14, FAINT, 2); bx += 22; }
+            const auto f = pop (1, 14);
+            text (g, parts[i], bx, cy, f, i == parts.size() - 1 ? TXT : DIM);
+            bx += textW (parts[i], f) + 8;
+        }
+    }
+
+    // ---- barres de defilement attrapables a la souris (1 = colonne 1, 2 = colonne 2, 3 = captures, 4 = cartes TONE3000)
+    struct Sb { float x = 0, y0 = 0, y1 = 0, content = 1, visible = 1; float* scroll = nullptr; };
+    Sb sbInfo (int which)
+    {
+        Sb s;
+        if (which == 4) { s.x = 1440; s.y0 = 174 - lift(); s.y1 = 528 + extraH(); s.content = gridContentH (tones.size()); s.visible = gBot() - gTop(); s.scroll = &scGrid; return s; }
+        const int n = which == 1 ? col1.size() : which == 2 ? col2.size() : rows.size();
+        s.x = which == 1 ? 320.0f : which == 2 ? 604.0f : 1440.0f;
+        s.y0 = 168 - lift(); s.y1 = 528 + extraH();
+        s.content = n * kItemH - 6.0f; s.visible = visH();
+        s.scroll = which == 1 ? &sc1 : which == 2 ? &sc2 : &sc3;
+        return s;
+    }
+    int scrollbarAt (juce::Point<float> p)
+    {
+        for (int w : tab == 0 ? std::initializer_list<int> { 1, 2, 3 } : std::initializer_list<int> { 4 })
+        {
+            const auto s = sbInfo (w);
+            if (s.content <= s.visible) continue;
+            if (p.x >= s.x - 8 && p.x <= s.x + 13 && p.y >= s.y0 - 4 && p.y <= s.y1 + 4) return w;
+        }
+        return 0;
+    }
+    void dragScroll (int which, float y, bool start)
+    {
+        auto s = sbInfo (which);
+        const float maxS = juce::jmax (0.0f, s.content - s.visible + (which == 4 ? 0.0f : 0.0f));
+        const float track = s.y1 - s.y0, thumb = juce::jmax (24.0f, track * juce::jmin (1.0f, s.visible / juce::jmax (1.0f, s.content)));
+        const float range = juce::jmax (1.0f, track - thumb);
+        const float maxScr = which == 4 ? gridMaxScroll() : maxScroll (which == 1 ? col1.size() : which == 2 ? col2.size() : rows.size());
+        juce::ignoreUnused (maxS);
+        if (start)
+        {
+            const float thumbTop = s.y0 + range * (maxScr > 0 ? *s.scroll / maxScr : 0.0f);
+            if (y < thumbTop || y > thumbTop + thumb) *s.scroll = juce::jlimit (0.0f, maxScr, (y - s.y0 - thumb * 0.5f) / range * maxScr);
+            dragWhich = which; dragStartY = y; dragStartScroll = *s.scroll;
+        }
+        else *s.scroll = juce::jlimit (0.0f, maxScr, dragStartScroll + (y - dragStartY) / range * maxScr);
+        if (which == 4 && scGrid > gridMaxScroll() - 320.0f) client->loadMore ((t3k::Tab) ttab);
+        tipShown = false;
+        repaint();
+    }
+
+    static constexpr float kItemH = 46.0f;
+    float top() const { return 166.0f - lift(); }
+    float visH() const { return 372.0f + lift() + extraH(); }
+    float cTop() const { return 160.0f - lift(); }
+    float cBot() const { return 540.0f + extraH(); }
+    float maxScroll (int n) const { return juce::jmax (0.0f, n * kItemH - 6.0f - visH()); }
 
     void paintLibrary (juce::Graphics& g)
     {
         using namespace lv;
         // recherche, dossier, rescan (colles a la croix, meme ecart)
-        rr (g, box (878, 56, 1278, 100), 11, TILE, search.hasKeyboardFocus (true) ? tint (ACC, 0.55f) : BORDER, 2);
-        icon (g, iSearch, 902, 78, 20, DIM, 3);
-        iconButton (g, 1286, iFolder, hover == hFolderBtn);
-        iconButton (g, 1338, iRefresh, hover == hRescan);
+        if (! compact())
+        {
+            rr (g, box (878, 56, 1278, 100), 11, TILE, search.hasKeyboardFocus (true) ? tint (ACC, 0.55f) : BORDER, 2);
+            icon (g, iSearch, 902, 78, 20, DIM, 3);
+            iconButton (g, 1286, iFolder, hover == hFolderBtn);
+            iconButton (g, 1338, iRefresh, hover == hRescan);
+        }
 
         const auto root = proc.library.getRoot();
         if (! root.isDirectory())
@@ -436,16 +585,12 @@ private:
             if (auto* it = findItem (col1, sel1)) parts.add (it->label);
             if (auto* it = findItem (col2, sel2)) parts.add (it->label);
         }
-        float bx = 62;
-        for (int i = 0; i < parts.size(); ++i)
+        if (! compact())
         {
-            if (i) { icon (g, iChev, bx + 8, 131, 14, FAINT, 2); bx += 22; }
-            const auto f = pop (1, 14);
-            text (g, parts[i], bx, 131, f, i == parts.size() - 1 ? TXT : DIM);
-            bx += textW (parts[i], f) + 8;
+            drawCrumbs (g, parts, 62, 131);
+            if (proc.library.isScanning())
+                text (g, "Scanning... " + juce::String (proc.library.scannedCount()), 1432, 131, pop (0, 13), DIM, 2, 300);
         }
-        if (proc.library.isScanning())
-            text (g, "Scanning... " + juce::String (proc.library.scannedCount()), 1432, 131, pop (0, 13), DIM, 2, 300);
 
         paintColumn (g, 56, 326, col1, sel1, sc1, hCol1);
         paintColumn (g, 340, 610, col2, sel2, sc2, hCol2);
@@ -453,13 +598,13 @@ private:
         // captures
         {
             juce::Graphics::ScopedSaveState ss (g);
-            g.reduceClipRegion (box (618, 160, 1452, 540).toNearestInt());
+            g.reduceClipRegion (box (618, cTop(), 1452, cBot()).toNearestInt());
             const auto loaded = proc.getSlotInfo (targetSlot).meta.path;
             const auto fItem = pop (1, 15);
             for (int j = 0; j < rows.size(); ++j)
             {
-                const float yy = kTop + j * kItemH - sc3;
-                if (yy + 40 < 160 || yy > 540) continue;
+                const float yy = top() + j * kItemH - sc3;
+                if (yy + 40 < cTop() || yy > cBot()) continue;
                 const auto& r = rows.getReference (j);
                 const float x0 = 624, x1 = 1432, cy = yy + 20;
                 const bool sel = r.path == loaded, hov = (hover == hRow || hover == hRowStar) && hover.index == j;
@@ -487,9 +632,9 @@ private:
                 text (g, search.isEmpty() ? (proc.library.isScanning() ? "Scanning your captures..." : "No capture in this folder") : "No capture matches",
                       1028, 300, pop (1, 15), DIM, 1, 800);
         }
-        scrollbar (g, 1440, 168, 528, kVisible / juce::jmax (1.0f, rows.size() * kItemH - 6.0f), sc3 / juce::jmax (1.0f, maxScroll (rows.size())));
-        scrollbar (g, 604, 168, 528, kVisible / juce::jmax (1.0f, col2.size() * kItemH - 6.0f), sc2 / juce::jmax (1.0f, maxScroll (col2.size())));
-        scrollbar (g, 320, 168, 528, kVisible / juce::jmax (1.0f, col1.size() * kItemH - 6.0f), sc1 / juce::jmax (1.0f, maxScroll (col1.size())));
+        scrollbar (g, 1440, 168 - lift(), 528 + extraH(), visH() / juce::jmax (1.0f, rows.size() * kItemH - 6.0f), sc3 / juce::jmax (1.0f, maxScroll (rows.size())));
+        scrollbar (g, 604, 168 - lift(), 528 + extraH(), visH() / juce::jmax (1.0f, col2.size() * kItemH - 6.0f), sc2 / juce::jmax (1.0f, maxScroll (col2.size())));
+        scrollbar (g, 320, 168 - lift(), 528 + extraH(), visH() / juce::jmax (1.0f, col1.size() * kItemH - 6.0f), sc1 / juce::jmax (1.0f, maxScroll (col1.size())));
         if (tipShown) paintExpanded (g);
     }
 
@@ -523,7 +668,7 @@ private:
         {
             const bool c1 = hover == hCol1;
             const auto& it = (c1 ? col1 : col2).getReference (hover.index);
-            const float x0 = c1 ? 56.0f : 340.0f, yy = kTop + hover.index * kItemH - (c1 ? sc1 : sc2);
+            const float x0 = c1 ? 56.0f : 340.0f, yy = top() + hover.index * kItemH - (c1 ? sc1 : sc2);
             const bool s = it.key == (c1 ? sel1 : sel2) && search.isEmpty();
             const float w = jmin (1440.0f - x0, 50 + textW (it.label, f) + 18);
             rr (g, box (x0, yy, x0 + w, yy + 40), 8, s ? tint (ACC, 0.14f) : HOVER);
@@ -534,7 +679,7 @@ private:
         {
             const auto& r = rows.getReference (hover.index);
             const auto name = r.title.isNotEmpty() ? r.title : r.fileName;
-            const float yy = kTop + hover.index * kItemH - sc3, xb = 716;
+            const float yy = top() + hover.index * kItemH - sc3, xb = 716;
             const bool sel = r.path == proc.getSlotInfo (targetSlot).meta.path;
             const float w = jmin (1446.0f - xb, 16 + textW (name, f) + 18);
             rr (g, box (xb + 6, yy, xb + w, yy + 40), 8, sel ? tint (ACC, 0.10f) : HOVER);
@@ -546,14 +691,14 @@ private:
     {
         using namespace lv;
         g.setColour (SEP);
-        g.fillRect (box (x1 + 6, 160, x1 + 8, 536));
+        g.fillRect (box (x1 + 6, cTop(), x1 + 8, cBot() - 4));
         juce::Graphics::ScopedSaveState ss (g);
-        g.reduceClipRegion (box (x0 - 4, 160, x1 + 2, 540).toNearestInt());
+        g.reduceClipRegion (box (x0 - 4, cTop(), x1 + 2, cBot()).toNearestInt());
         const auto f = pop (1, 15);
         for (int j = 0; j < items.size(); ++j)
         {
-            const float yy = kTop + j * kItemH - sc;
-            if (yy + 40 < 160 || yy > 540) continue;
+            const float yy = top() + j * kItemH - sc;
+            if (yy + 40 < cTop() || yy > cBot()) continue;
             const auto& it = items.getReference (j);
             const bool s = it.key == sel && search.isEmpty(), hov = hover == hk && hover.index == j;
             if (s) rr (g, box (x0, yy, x1 - 14, yy + 40), 8, tint (ACC, 0.14f));
@@ -699,9 +844,9 @@ private:
         if (path.isNotEmpty() && ! p.isEmpty()) { sel1 = key1 (p); sel2 = key2 (p); }
         rebuild();
         const int i = rowIndexOfLoaded();
-        if (i >= 0) sc3 = juce::jlimit (0.0f, maxScroll (rows.size()), i * kItemH - kVisible * 0.5f);
-        for (int j = 0; j < col1.size(); ++j) if (col1[j].key == sel1) sc1 = juce::jlimit (0.0f, maxScroll (col1.size()), j * kItemH - kVisible * 0.5f);
-        for (int j = 0; j < col2.size(); ++j) if (col2[j].key == sel2) sc2 = juce::jlimit (0.0f, maxScroll (col2.size()), j * kItemH - kVisible * 0.5f);
+        if (i >= 0) sc3 = juce::jlimit (0.0f, maxScroll (rows.size()), i * kItemH - visH() * 0.5f);
+        for (int j = 0; j < col1.size(); ++j) if (col1[j].key == sel1) sc1 = juce::jlimit (0.0f, maxScroll (col1.size()), j * kItemH - visH() * 0.5f);
+        for (int j = 0; j < col2.size(); ++j) if (col2[j].key == sel2) sc2 = juce::jlimit (0.0f, maxScroll (col2.size()), j * kItemH - visH() * 0.5f);
     }
     int rowIndexOfLoaded() const
     {
@@ -720,7 +865,7 @@ private:
     {
         const float y = i * kItemH;
         if (y < sc3) sc3 = y;
-        else if (y + 40 > sc3 + kVisible) sc3 = y + 40 - kVisible;
+        else if (y + 40 > sc3 + visH()) sc3 = y + 40 - visH();
         sc3 = juce::jlimit (0.0f, maxScroll (rows.size()), sc3);
     }
     bool handleKey (const juce::KeyPress& k)
@@ -740,10 +885,12 @@ private:
     }
 
     // ================================================================ TONE3000
-    static constexpr float kCardW = 260, kCardH = 300, kGapX = 16, kGapY = 16, kGridTop = 172, kGridBottom = 542;
-    juce::Rectangle<float> cardRect (int i) const { return { 62 + (i % 5) * (kCardW + kGapX), kGridTop + (i / 5) * (kCardH + kGapY) - scGrid, kCardW, kCardH }; }
+    static constexpr float kCardW = 260, kCardH = 300, kGapX = 16, kGapY = 16;
+    float gTop() const { return 172.0f - lift(); }
+    float gBot() const { return 542.0f + extraH(); }
+    juce::Rectangle<float> cardRect (int i) const { return { 62 + (i % 5) * (kCardW + kGapX), gTop() + (i / 5) * (kCardH + kGapY) - scGrid, kCardW, kCardH }; }
     float gridContentH (int n) const { const int rowsN = (n + 4) / 5; return rowsN * (kCardH + kGapY) - kGapY + 20.0f; }
-    float gridMaxScroll() const { return juce::jmax (0.0f, gridContentH (tones.size()) - (kGridBottom - kGridTop)); }
+    float gridMaxScroll() const { return juce::jmax (0.0f, gridContentH (tones.size()) - (gBot() - gTop())); }
 
     juce::Rectangle<float> pillRect (int i) const
     {
@@ -780,6 +927,17 @@ private:
         using namespace lv;
         if (! client->isSignedIn()) { paintSplash (g); return; }
 
+        if (! compact()) paintT3kHeader (g);
+
+        // cartes
+        const auto l = client->getList ((t3k::Tab) ttab);
+        tones = l.tones;
+        paintGrid (g, l);
+    }
+
+    void paintT3kHeader (juce::Graphics& g)
+    {
+        using namespace lv;
         // compte + Browse TONE3000
         const auto user = client->getUsername();
         const auto av = client->getImage (client->getAvatarUrl());
@@ -820,25 +978,26 @@ private:
         text (g, vtxt, 1414, 137, pop (1, 14), hover == hVersions ? TXT : DIM, 2, 400);
         juce::Path tri; tri.addTriangle (1422, 134, 1432, 134, 1427, 140);
         g.setColour (hover == hVersions ? TXT : DIM); g.fillPath (tri);
+    }
 
-        // cartes
-        const auto l = client->getList ((t3k::Tab) ttab);
-        tones = l.tones;
+    void paintGrid (juce::Graphics& g, const t3k::ListState& l)
+    {
+        using namespace lv;
         {
             juce::Graphics::ScopedSaveState ss (g);
-            g.reduceClipRegion (box (42, 162, 1452, kGridBottom).toNearestInt());
+            g.reduceClipRegion (box (42, 162 - lift(), 1452, gBot()).toNearestInt());
             for (int i = 0; i < tones.size(); ++i)
             {
                 const auto r = cardRect (i);
-                if (r.getBottom() < 162 || r.getY() > kGridBottom) continue;
+                if (r.getBottom() < 162 - lift() || r.getY() > gBot()) continue;
                 paintCard (g, i, r);
             }
         }
         // fondu : la rangee suivante passe sous le bord
-        juce::ColourGradient fade (BG.withAlpha (0.0f), 0, 506, BG.withAlpha (150.0f / 255.0f), 0, kGridBottom, false);
+        juce::ColourGradient fade (BG.withAlpha (0.0f), 0, gBot() - 36, BG.withAlpha (150.0f / 255.0f), 0, gBot(), false);
         g.setGradientFill (fade);
-        g.fillRect (box (42, 506, 1452, kGridBottom));
-        scrollbar (g, 1440, 174, 528, (kGridBottom - kGridTop) / juce::jmax (1.0f, gridContentH (tones.size())), scGrid / juce::jmax (1.0f, gridMaxScroll()));
+        g.fillRect (box (42, gBot() - 36, 1452, gBot()));
+        scrollbar (g, 1440, 174 - lift(), 528 + extraH(), (gBot() - gTop()) / juce::jmax (1.0f, gridContentH (tones.size())), scGrid / juce::jmax (1.0f, gridMaxScroll()));
 
         // etats vides / chargement / erreur
         juce::String msg;
@@ -857,7 +1016,7 @@ private:
             if (l.error.isNotEmpty()) text (g, "Click to retry", 747, 360, pop (0, 13), hover == hRetry ? TXT : DIM, 1, 400);
         }
         else if (l.loading)
-            text (g, "Loading more...", 747, 528, pop (0, 13), DIM, 1, 400);
+            text (g, "Loading more...", 747, gBot() - 14, pop (0, 13), DIM, 1, 400);
         if (! proc.library.getRoot().isDirectory())
             text (g, "Choose your capture folder in the Library tab first: tones are synced into it.", 747, 548, pop (0, 12), RED.withAlpha (0.9f), 1, 1200);
         else if (const auto n = client->getNotice(); n.isNotEmpty())
@@ -1010,17 +1169,19 @@ private:
             if (dlgMode == 1 && in (box (471, 356, 820, 380))) return { hDlgCheck };
             return { hDlgBlock };
         }
-        if (in (box (321, 59, 459, 97))) return { hTab0 };
-        if (in (box (457, 59, 595, 97))) return { hTab1 };
-        if (in (box (1390, 56, 1434, 100))) return { hClose };
+        if (compact() && p.y < 90) return {};
+        const bool hd = ! compact();     // en-tete visible
+        if (hd && in (box (321, 59, 459, 97))) return { hTab0 };
+        if (hd && in (box (457, 59, 595, 97))) return { hTab1 };
+        if (hd && in (box (1390, 56, 1434, 100))) return { hClose };
         if (tab == 0)
         {
-            if (in (box (1286, 56, 1330, 100))) return { hFolderBtn };
-            if (in (box (1338, 56, 1382, 100))) return { hRescan };
+            if (hd && in (box (1286, 56, 1330, 100))) return { hFolderBtn };
+            if (hd && in (box (1338, 56, 1382, 100))) return { hRescan };
             if (! proc.library.getRoot().isDirectory()) return in (box (607, 336, 887, 382)) ? Hit { hChoose } : Hit {};
-            if (p.y >= 160 && p.y <= 540)
+            if (p.y >= cTop() && p.y <= cBot())
             {
-                auto idx = [&] (float sc, int n) { const int j = (int) std::floor ((p.y - kTop + sc) / kItemH); return (j >= 0 && j < n && std::fmod (p.y - kTop + sc, kItemH) <= 40.0f) ? j : -1; };
+                auto idx = [&] (float sc, int n) { const int j = (int) std::floor ((p.y - top() + sc) / kItemH); return (j >= 0 && j < n && std::fmod (p.y - top() + sc, kItemH) <= 40.0f) ? j : -1; };
                 if (p.x >= 56 && p.x <= 312) { const int j = idx (sc1, col1.size()); if (j >= 0) return { hCol1, j }; }
                 else if (p.x >= 340 && p.x <= 596) { const int j = idx (sc2, col2.size()); if (j >= 0) return { hCol2, j }; }
                 else if (p.x >= 624 && p.x <= 1432) { const int j = idx (sc3, rows.size()); if (j >= 0) return { p.x < 666 ? hRowStar : hRow, j }; }
@@ -1032,13 +1193,16 @@ private:
             if (client->isConnecting()) return in (box (697, 394, 797, 414)) ? Hit { hCancel } : Hit {};
             return in (box (587, 330, 907, 376)) ? Hit { hConnect } : Hit {};
         }
-        if (in (box (1182, 56, 1382, 100))) return { hBrowse };
-        if (in (box (1042, 84, 1100, 98))) return { hSignOut };
-        if (in (box (1000, 62, 1032, 94))) return { hAvatar };
-        for (int i = 0; i < 5; ++i) if (in (pillRect (i))) return { hPill, i };
-        if (in (resyncRect())) return { hResync };
-        if (in (box (1414 - versionsW() - 4, 120, 1434, 154))) return { hVersions };
-        if (p.y >= 162 && p.y <= kGridBottom)
+        if (hd)
+        {
+            if (in (box (1182, 56, 1382, 100))) return { hBrowse };
+            if (in (box (1042, 84, 1100, 98))) return { hSignOut };
+            if (in (box (1000, 62, 1032, 94))) return { hAvatar };
+            for (int i = 0; i < 5; ++i) if (in (pillRect (i))) return { hPill, i };
+            if (in (resyncRect())) return { hResync };
+            if (in (box (1414 - versionsW() - 4, 120, 1434, 154))) return { hVersions };
+        }
+        if (p.y >= 162 - lift() && p.y <= gBot())
         {
             const auto l = client->getList ((t3k::Tab) ttab);
             if (l.error.isNotEmpty() && in (box (547, 316, 947, 372))) return { hRetry };
@@ -1476,6 +1640,18 @@ private:
 
     void timerCallback() override
     {
+        if (floating)
+        {
+            const auto now = juce::Time::getMillisecondCounter();
+            if (dragWhich == 0 && now - lastWheel > 600) target = 0.0f;
+            const float step = 1.0f / (0.15f * 60.0f);
+            const float before = ex;
+            ex = target > ex ? juce::jmin (target, ex + step) : juce::jmax (target, ex - step);
+            if (ex != before) { sc1 = juce::jlimit (0.0f, maxScroll (col1.size()), sc1); sc2 = juce::jlimit (0.0f, maxScroll (col2.size()), sc2);
+                                sc3 = juce::jlimit (0.0f, maxScroll (rows.size()), sc3); scGrid = juce::jlimit (0.0f, gridMaxScroll(), scGrid); repaint(); }
+            if (ex <= 0.0f && target <= 0.0f) { endFloat(); startTimerHz (10); }
+            return;
+        }
         if (! tipShown && dlgMode == 0 && (hover == hCol1 || hover == hCol2 || hover == hRow || hover == hRowStar)
              && juce::Time::getMillisecondCounter() - hoverSince >= 800 && hoverTruncated())
         { tipShown = true; repaint(); }
@@ -1512,7 +1688,11 @@ private:
     juce::String sel1, sel2, pendingReveal, drawnLoaded;
     float sc1 = 0, sc2 = 0, sc3 = 0, scGrid = 0;
     int tab = 0, ttab = t3k::favorites, tick = 0;
-    bool revealPending = false, dlgAsk = true;
+    bool revealPending = false, dlgAsk = true, floating = false;
+    float ex = 0.0f, target = 0.0f, dragStartY = 0.0f, dragStartScroll = 0.0f;
+    int dragWhich = 0;
+    juce::uint32 lastWheel = 0;
+    juce::Component::SafePointer<juce::Component> homeParent;
     int dlgMode = 0;
     t3k::Tone dlgTone;
     juce::File dlgFile;

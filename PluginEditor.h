@@ -29,6 +29,7 @@ public:
     void openLibrary (int slot);         // outil : ouvre la bibliotheque
    #if AMPIRE_TOOL
     void previewLibrary (int tab, bool signedIn);   // outil : onglet Library / TONE3000 avec donnees fictives
+    juce::Component* previewExpanded();             // outil : bibliotheque agrandie (renvoie le composant a capturer)
    #endif
     void showStatus (const juce::String& msg);   // message temporaire dans l'ecran
 

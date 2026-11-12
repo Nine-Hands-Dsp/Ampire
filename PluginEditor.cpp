@@ -611,6 +611,7 @@ public:
     ~AmpireContent() override = default;
     void openLibrary (int s) { library.open (s); }
    #if AMPIRE_TOOL
+    juce::Component* previewExpanded() { library.previewExpanded(); return &library; }
     void previewLibrary (int tab, bool signedIn) { library.previewDemo (signedIn); library.open (0); library.setTab (tab % 10); if (tab >= 10) library.previewDialog (tab / 10); }
    #endif
 
@@ -1427,6 +1428,7 @@ void AmpireEditor::paint (juce::Graphics& g) { g.fillAll (col::outer); }
 void AmpireEditor::openLibrary (int slot) { content->openLibrary (slot); }
 #if AMPIRE_TOOL
 void AmpireEditor::previewLibrary (int tab, bool signedIn) { content->previewLibrary (tab, signedIn); }
+juce::Component* AmpireEditor::previewExpanded() { return content->previewExpanded(); }
 #endif
 void AmpireEditor::showStatus (const juce::String& msg) { content->showStatus (msg); }
 

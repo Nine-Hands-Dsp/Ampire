@@ -50,7 +50,9 @@ int main (int argc, char** argv)
             proc.processBlock (buf, mb);
             juce::MessageManager::getInstance()->runDispatchLoopUntil (25);
         }
-        auto img = ed->createComponentSnapshot (ed->getLocalBounds(), true, scale);
+        juce::Component* shotOf = ed.get();
+        if (arg (11) == "x") if (auto* ae = dynamic_cast<AmpireEditor*> (ed.get())) { shotOf = ae->previewExpanded(); juce::MessageManager::getInstance()->runDispatchLoopUntil (100); }
+        auto img = shotOf->createComponentSnapshot (shotOf->getLocalBounds(), true, scale);
         juce::File out (arg (2));
         out.deleteFile();
         juce::FileOutputStream os (out);
