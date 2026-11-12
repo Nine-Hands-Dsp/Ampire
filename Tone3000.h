@@ -83,6 +83,8 @@ namespace t3k
         bool renameLocal (const juce::String& toneId, const juce::String& newName, juce::String& error);
         bool folderTaken (const Tone& t, const juce::String& folderName) const;   // un autre dossier porte deja ce nom
         bool getAskFolderName() const;
+        bool isBusy (const juce::File& f) const;        // un telechargement en cours touche ce dossier / fichier
+        void refreshLocal();
         void setAskFolderName (bool b);
         Tone takeSelectedTone();             // tone choisi par Browse TONE3000 (une seule fois)
         Job getJob (const juce::String& toneId) const;

@@ -39,7 +39,8 @@ int main (int argc, char** argv)
         std::unique_ptr<juce::AudioProcessorEditor> ed (proc.createEditor());
         if (arg (8) == "1") if (auto* ae = dynamic_cast<AmpireEditor*> (ed.get())) ae->openLibrary (0);
         if (arg (8) == "t" || arg (8) == "s") if (auto* ae = dynamic_cast<AmpireEditor*> (ed.get())) ae->previewLibrary (1, arg (8) == "t");
-        if (arg (8) == "d1" || arg (8) == "d2") if (auto* ae = dynamic_cast<AmpireEditor*> (ed.get())) ae->previewLibrary (1 + 10 * arg (8).getTrailingIntValue(), true);
+        if (arg (8).startsWith ("d")) if (auto* ae = dynamic_cast<AmpireEditor*> (ed.get()))
+        { const int dm = arg (8).getTrailingIntValue(); ae->previewLibrary ((dm >= 3 ? 0 : 1) + 10 * dm, true); }
         if (arg (10).isNotEmpty()) if (auto* ae = dynamic_cast<AmpireEditor*> (ed.get())) ae->previewStackButton (arg (10) != "na", arg (10) == "on");   // apparence du bouton IMPULSE
         // signal entretenu pendant l'affichage : vu-metres allumes sur la capture
         for (int k = 0; k < 24; ++k)

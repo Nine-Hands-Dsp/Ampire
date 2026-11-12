@@ -17,7 +17,7 @@ from reportlab.pdfbase.ttfonts import TTFont
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SHOTS, OUT = sys.argv[1], sys.argv[2]
-VERSION = "1.1.4"
+VERSION = "1.1.5"
 TMP = os.path.dirname(os.path.abspath(OUT))
 MA = os.path.join(ROOT, "tools", "manual_assets")
 for n, f in (("Pop", os.path.join(ROOT, "assets", "Poppins-Regular.ttf")), ("PopM", os.path.join(ROOT, "assets", "Poppins-Medium.ttf")),
@@ -174,7 +174,9 @@ story += [P("4. Captures, bibliothèque et TONE3000", "h1"),
               "<b>Recherche</b> (en haut) sur le nom, le matériel, le fabricant, le son, le dossier… dans toute la bibliothèque, plusieurs mots possibles.",
               "<b>Dossier</b> (icône à côté de la recherche) : choisir le dossier de vos captures (sous-dossiers compris, analysé en arrière-plan), charger un fichier isolé, ouvrir le dossier. <b>Rescan</b> relit le dossier.",
               "<b>Un clic</b> sur une capture la charge tout de suite (écoute rapide) et laisse la bibliothèque ouverte ; <b>double-clic</b> ou <b>Entrée</b> la charge et ferme la bibliothèque ; les flèches haut / bas du clavier passent d'une capture à l'autre en l'écoutant ; <b>Échap</b> ferme.",
-              "<b>Étoile</b> (à gauche de la ligne) : ajoute ou retire des favoris. Pastille <b>A2 / A1</b> et type (Amp, Pedal, Full rig) quand le fichier l'indique. Clic droit sur une capture : charger, favori, afficher dans le dossier.",
+              "<b>Nom trop long</b> : laissez la souris 800 ms sur un dossier ou une capture dont le nom est coupé (…) : la ligne s'allonge et montre le nom en entier.",
+              "<b>Clic droit sur un dossier</b> : afficher dans l'Explorateur / le Finder, <b>Rename folder...</b>, <b>Delete folder...</b> ; <b>sur une capture</b> : charger, favori, afficher, <b>Delete capture...</b>. Chaque suppression demande une confirmation et envoie le dossier ou le fichier dans la Corbeille, d'où il se restaure : rien n'est effacé définitivement.",
+              "<b>Étoile</b> (à gauche de la ligne) : ajoute ou retire des favoris. Pastille <b>A2 / A1</b> et type (Amp, Pedal, Full rig) quand le fichier l'indique. ",
               "<b>Dossier par défaut</b> : mémorisé pour toutes les instances et tous les projets. La première capture chargée le définit ; on le change par l'icône dossier ou par clic droit &gt; Capture folder."]),
     P("TONE3000", "h2"),
     P("Ampire est partenaire de <b>TONE3000</b> (tone3000.com), le catalogue communautaire de captures NAM et d'IR. L'onglet <b>TONE3000</b> de la bibliothèque télécharge les tones directement dans votre dossier de captures."),

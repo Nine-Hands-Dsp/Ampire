@@ -49,7 +49,7 @@ namespace lv
     inline float textW (const String& s, const Font& f) { return GlyphArrangement::getStringWidth (f, s); }
 
     // ---- icones (grille de 16, comme les icones des menus Octopus)
-    enum Ico { iFolder, iSearch, iStar, iStarF, iClock, iAll, iAmp, iPedal, iRig, iCab, iRefresh, iFile, iX, iChev, iDl, iCheck, iTrend, iUser, iExt, iPen };
+    enum Ico { iFolder, iSearch, iStar, iStarF, iClock, iAll, iAmp, iPedal, iRig, iCab, iRefresh, iFile, iX, iChev, iDl, iCheck, iTrend, iUser, iExt, iPen, iTrash };
     inline void icon (Graphics& g, Ico kind, float cx, float cy, float s, Colour c, float w = 3.0f)
     {
         const float k = s / 16.0f;
@@ -111,6 +111,8 @@ namespace lv
                 p.addCentredArc (cx, cy + 7.5f * k, 6.5f * k, 6.5f * k, 0.0f, -MathConstants<float>::halfPi, MathConstants<float>::halfPi, true);
                 break;
             case iPen:     poly ({ { 3, 13 }, { 4, 9.5f }, { 11.5f, 2 }, { 14, 4.5f }, { 6.5f, 12 } }, true); break;
+            case iTrash:   poly ({ { 2, 4 }, { 14, 4 } }); poly ({ { 6, 4 }, { 6.5f, 2 }, { 9.5f, 2 }, { 10, 4 } }); poly ({ { 3.5f, 4 }, { 4.5f, 14.5f }, { 11.5f, 14.5f }, { 12.5f, 4 } });
+                           poly ({ { 6.5f, 7 }, { 6.8f, 12 } }); poly ({ { 9.5f, 7 }, { 9.2f, 12 } }); break;
             case iExt:     poly ({ { 9, 2 }, { 14, 2 }, { 14, 7 } }); poly ({ { 14, 2 }, { 7, 9 } }); poly ({ { 12, 10 }, { 12, 14 }, { 2, 14 }, { 2, 4 }, { 6, 4 } }); break;
         }
         g.setColour (c);
@@ -274,7 +276,11 @@ public:
     void setTab (int t) { tab = t; placeSearch(); if (tab == 1 && client->isSignedIn()) ensureLoaded (true); repaint(); }
    #if AMPIRE_TOOL
     void previewDemo (bool signedIn) { client->previewDemo (signedIn); repaint(); }
-    void previewDialog (int mode) { const auto l = client->getList (t3k::favorites); if (l.tones.size() > 1) openDialog (mode, l.tones[mode == 2 ? 0 : 1]); }
+    void previewDialog (int mode)
+    {
+        if (mode >= 3) { const auto f = proc.library.getRoot().getChildFile ("Mesa Boogie Dual Rectifier Rev G"); openFileDialog (mode, mode == 4 ? f.getChildFile ("DI").getChildFile ("MESRectoRevG_Green_BalancedClean_DI.nam") : f, 4); return; }
+        const auto l = client->getList (t3k::favorites); if (l.tones.size() > 1) openDialog (mode, l.tones[mode == 2 ? 0 : 1]);
+    }
    #endif
 
     void resized() override { placeSearch(); }
@@ -326,6 +332,7 @@ public:
     void mouseDown (const juce::MouseEvent& e) override
     {
         const auto h = hitAt (m (e));
+        tipShown = false;
         if (e.mods.isPopupMenu()) { contextMenu (h); return; }
         click (h, e.getNumberOfClicks() >= 2);
     }
@@ -333,6 +340,7 @@ public:
     {
         if (dlgMode != 0) return;
         const auto p = m (e);
+        tipShown = false;
         const float d = -w.deltaY * 260.0f;
         if (tab == 0)
         {
@@ -368,7 +376,7 @@ private:
     static float kSx() { return 750.0f / lv::kMw; }
     static float kSy() { return 300.0f / lv::kMh; }
     juce::Point<float> m (const juce::MouseEvent& e) const { return { e.position.x * lv::kMw / (float) juce::jmax (1, getWidth()), e.position.y * lv::kMh / (float) juce::jmax (1, getHeight()) }; }
-    void setHover (Hit h) { if (h != hover) { hover = h; repaint(); } }
+    void setHover (Hit h) { if (h != hover) { hover = h; hoverSince = juce::Time::getMillisecondCounter(); tipShown = false; repaint(); } }
 
     void placeSearch()
     {
@@ -482,6 +490,56 @@ private:
         scrollbar (g, 1440, 168, 528, kVisible / juce::jmax (1.0f, rows.size() * kItemH - 6.0f), sc3 / juce::jmax (1.0f, maxScroll (rows.size())));
         scrollbar (g, 604, 168, 528, kVisible / juce::jmax (1.0f, col2.size() * kItemH - 6.0f), sc2 / juce::jmax (1.0f, maxScroll (col2.size())));
         scrollbar (g, 320, 168, 528, kVisible / juce::jmax (1.0f, col1.size() * kItemH - 6.0f), sc1 / juce::jmax (1.0f, maxScroll (col1.size())));
+        if (tipShown) paintExpanded (g);
+    }
+
+    // nom complet au survol (800 ms) : la ligne s'allonge et montre le nom entier, sans cadre
+    bool hoverTruncated() const
+    {
+        const auto f = lv::pop (1, 15);
+        if (hover == hCol1 || hover == hCol2)
+        {
+            const auto& items = hover == hCol1 ? col1 : col2;
+            if (hover.index < 0 || hover.index >= items.size()) return false;
+            return lv::textW (items[hover.index].label, f) > 270 - 120;
+        }
+        if (hover == hRow || hover == hRowStar)
+        {
+            if (hover.index < 0 || hover.index >= rows.size()) return false;
+            const auto& r = rows.getReference (hover.index);
+            const auto name = r.title.isNotEmpty() ? r.title : r.fileName;
+            const auto ty = lv::typeOf (r);
+            const float right = ty.isNotEmpty() ? 1432 - 16 - (lv::textW (ty, lv::pop (1, 14)) + 22) - 12 : 1432 - 16;
+            return lv::textW (name, f) > right - 716 - 16;
+        }
+        return false;
+    }
+    void paintExpanded (juce::Graphics& g)
+    {
+        using namespace lv;
+        if (! hoverTruncated()) return;
+        const auto f = pop (1, 15);
+        if (hover == hCol1 || hover == hCol2)
+        {
+            const bool c1 = hover == hCol1;
+            const auto& it = (c1 ? col1 : col2).getReference (hover.index);
+            const float x0 = c1 ? 56.0f : 340.0f, yy = kTop + hover.index * kItemH - (c1 ? sc1 : sc2);
+            const bool s = it.key == (c1 ? sel1 : sel2) && search.isEmpty();
+            const float w = jmin (1440.0f - x0, 50 + textW (it.label, f) + 18);
+            rr (g, box (x0, yy, x0 + w, yy + 40), 8, s ? tint (ACC, 0.14f) : HOVER);
+            icon (g, it.ico, x0 + 26, yy + 20, it.ico == iStarF ? 20.0f : 18.0f, s ? ACC : (it.ico == iStarF ? GOLD : DIM), 2);
+            text (g, it.label, x0 + 50, yy + 21, f, s ? ACC : TXT, 0, w - 50);
+        }
+        else
+        {
+            const auto& r = rows.getReference (hover.index);
+            const auto name = r.title.isNotEmpty() ? r.title : r.fileName;
+            const float yy = kTop + hover.index * kItemH - sc3, xb = 716;
+            const bool sel = r.path == proc.getSlotInfo (targetSlot).meta.path;
+            const float w = jmin (1446.0f - xb, 16 + textW (name, f) + 18);
+            rr (g, box (xb + 6, yy, xb + w, yy + 40), 8, sel ? tint (ACC, 0.10f) : HOVER);
+            text (g, name, xb + 16, yy + 21, f, sel ? ACC : TXT, 0, w - 16);
+        }
     }
 
     void paintColumn (juce::Graphics& g, float x0, float x1, const juce::Array<Item>& items, const juce::String& sel, float sc, int hk)
@@ -933,8 +991,9 @@ private:
         auto in = [&] (juce::Rectangle<float> r) { return r.contains (p); };
         if (dlgMode != 0)
         {
-            if (in (box (749, 402, 881, 442))) return { hDlgCancel };
-            if (in (box (891, 402, 1023, 442))) return { hDlgOk };
+            const float by = dlgMode >= 3 && dlgMode <= 4 ? 372.0f : 402.0f;
+            if (in (box (749, by, 881, by + 40))) return { hDlgCancel };
+            if (in (box (891, by, 1023, by + 40))) return { hDlgOk };
             if (dlgMode == 1 && in (box (471, 356, 820, 380))) return { hDlgCheck };
             return { hDlgBlock };
         }
@@ -1113,18 +1172,43 @@ private:
     {
         juce::PopupMenu mm;
         juce::Component::SafePointer<LibraryPanel> sp (this);
+        auto red = [] (int id, const juce::String& t) { juce::PopupMenu::Item it (t); it.setID (id); it.setColour (lv::RED); return it; };
         if (h.kind == hRow || h.kind == hRowStar)
         {
             const auto r = rows[h.index];
+            const auto name = r.title.isNotEmpty() ? r.title : r.fileName;
+            MenuStyle::header (mm, MenuStyle::icoLoad, name.length() > 34 ? name.substring (0, 32) + juce::String::fromUTF8 ("\xe2\x80\xa6") : name,
+                               (r.isA2 ? juce::String ("A2") : r.family) + juce::String::fromUTF8 ("  \xc2\xb7  ") + juce::File (r.path).getParentDirectory().getFileName());
             mm.addItem (1, "Load");
             mm.addItem (2, "Favourite", true, proc.library.isFavourite (r.path));
             mm.addItem (3, "Show in folder");
+            mm.addSeparator();
+            mm.addItem (red (4, "Delete capture..."));
             MenuStyle::styled (mm, menuLookFor (this)).showMenuAsync (juce::PopupMenu::Options(), [sp, r, i = h.index] (int res)
             {
                 if (sp == nullptr) return;
                 if (res == 1) sp->loadRow (i, false);
                 else if (res == 2) sp->proc.library.toggleFavourite (r.path);
                 else if (res == 3) juce::File (r.path).revealToUser();
+                else if (res == 4) sp->openFileDialog (4, juce::File (r.path), 1);
+            });
+        }
+        else if ((h.kind == hCol1 || h.kind == hCol2) && ! folderOf (h.kind == hCol1 ? 1 : 2, h.index).getFullPathName().isEmpty())
+        {
+            const auto f = folderOf (h.kind == hCol1 ? 1 : 2, h.index);
+            const int n = (h.kind == hCol1 ? col1 : col2)[h.index].count;
+            MenuStyle::header (mm, MenuStyle::icoLoad, f.getFileName().length() > 34 ? f.getFileName().substring (0, 32) + juce::String::fromUTF8 ("\xe2\x80\xa6") : f.getFileName(),
+                               "Folder" + juce::String::fromUTF8 ("  \xc2\xb7  ") + juce::String (n) + (n == 1 ? " capture" : " captures"));
+            mm.addItem (1, "Show in folder");
+            mm.addItem (2, "Rename folder...");
+            mm.addSeparator();
+            mm.addItem (red (3, "Delete folder..."));
+            MenuStyle::styled (mm, menuLookFor (this)).showMenuAsync (juce::PopupMenu::Options(), [sp, f, n] (int res)
+            {
+                if (sp == nullptr) return;
+                if (res == 1) f.revealToUser();
+                else if (res == 2) sp->openFileDialog (5, f, n);
+                else if (res == 3) sp->openFileDialog (3, f, n);
             });
         }
         else if ((h.kind == hCard || h.kind == hCardBtn) && h.index < tones.size())
@@ -1174,8 +1258,33 @@ private:
     }
     void confirmDialog()
     {
+        if (dlgMode == 3 || dlgMode == 4)
+        {
+            if (client->isBusy (dlgFile)) { dlgError = "Wait for the TONE3000 download to finish"; repaint(); return; }
+            if (! dlgFile.moveToTrash()) { dlgError = "Could not move it to the " + trashName(); repaint(); return; }
+            proc.library.rescan();
+            client->refreshLocal();
+            closeDialog();
+            return;
+        }
         const auto name = nameEd.getText().trim();
         if (name.isEmpty()) { dlgError = "Type a folder name"; repaint(); return; }
+        if (dlgMode == 5)
+        {
+            const auto target = dlgFile.getParentDirectory().getChildFile (t3k::Client::safeName (name));
+            if (target != dlgFile)
+            {
+                if (target.exists()) { dlgError = "A folder with this name already exists"; repaint(); return; }
+                if (client->isBusy (dlgFile)) { dlgError = "Wait for the TONE3000 download to finish"; repaint(); return; }
+                if (! dlgFile.moveFileTo (target)) { dlgError = "Could not rename the folder (is a file in use?)"; repaint(); return; }
+                if (sel1 == dlgFile.getFileName() && dlgFile.getParentDirectory() == proc.library.getRoot()) sel1 = target.getFileName();
+                else if (sel2 == dlgFile.getFileName()) sel2 = target.getFileName();
+                proc.library.rescan();
+                client->refreshLocal();
+            }
+            closeDialog();
+            return;
+        }
         if (dlgMode == 1)
         {
             if (client->folderTaken (dlgTone, name)) { dlgError = "A folder with this name already exists"; repaint(); return; }
@@ -1190,11 +1299,62 @@ private:
         }
         closeDialog();
     }
+    static juce::String trashName()
+    {
+       #if JUCE_MAC
+        return "Trash";
+       #else
+        return "Recycle Bin";
+       #endif
+    }
+    void openFileDialog (int mode, const juce::File& f, int count)
+    {
+        dlgMode = mode;
+        dlgFile = f;
+        dlgCount = count;
+        dlgError.clear();
+        if (mode == 5) { nameEd.setText (f.getFileName(), false); placeSearch(); nameEd.grabKeyboardFocus(); nameEd.selectAll(); }
+        else { placeSearch(); grabKeyboardFocus(); }
+        repaint();
+    }
+    juce::File folderOf (int col, int index) const
+    {
+        const auto root = proc.library.getRoot();
+        const auto& items = col == 1 ? col1 : col2;
+        if (index < 0 || index >= items.size()) return {};
+        const auto key = items[index].key;
+        if (key.startsWith ("\x01")) return {};
+        return col == 1 ? root.getChildFile (key) : root.getChildFile (sel1).getChildFile (key);
+    }
+    void paintConfirm (juce::Graphics& g)
+    {
+        using namespace lv;
+        const auto r = box (447, 180, 1047, 432);
+        juce::Path pp; pp.addRoundedRectangle (r, 16.0f);
+        juce::DropShadow (juce::Colours::black.withAlpha (0.65f), 26, { 5, 10 }).drawForPath (g, pp);
+        rr (g, r, 16, BG, BORDER, 2);
+        rr (g, box (471, 202, 515, 246), 10, tint (RED, 0.16f), tint (RED, 0.7f), 2);
+        icon (g, iTrash, 493, 224, 22, RED, 3);
+        const bool folder = dlgMode == 3;
+        text (g, folder ? "Delete folder" : "Delete capture", 529, 216, pop (2, 19), TXT);
+        text (g, fitText (folder ? dlgFile.getFileName() : dlgFile.getFileNameWithoutExtension(), pop (0, 13), 490), 529, 239, pop (0, 13), DIM);
+        const auto line1 = folder ? "Move this folder and its " + juce::String (dlgCount) + (dlgCount == 1 ? " capture" : " captures") + " to the " + trashName() + "?"
+                                  : "Move this capture to the " + trashName() + "?";
+        const bool loaded = ! folder && dlgFile.getFullPathName() == proc.getSlotInfo (targetSlot).meta.path;
+        text (g, line1, 471, 282, pop (0, 14), TXT, 0, 552);
+        if (dlgError.isNotEmpty()) text (g, dlgError, 471, 306, pop (1, 13), RED, 0, 552);
+        else text (g, loaded ? "It stays loaded in Ampire until you load another one." : "You can restore it from the " + trashName() + " if needed.", 471, 306, pop (0, 14), DIM, 0, 552);
+        rr (g, box (749, 372, 881, 412), 10, hover == hDlgCancel ? tint (TXT, 0.08f, HOVER) : HOVER, BORDER, 2);
+        text (g, "Cancel", 815, 392, pop (1, 14), TXT, 1, 132);
+        rr (g, box (891, 372, 1023, 412), 10, hover == hDlgOk ? RED.brighter (0.15f) : RED);
+        text (g, "DELETE", 957, 392, pop (2, 14), INK, 1, 132);
+    }
     void paintDialog (juce::Graphics& g)
     {
         using namespace lv;
         g.setColour (juce::Colours::black.withAlpha (120.0f / 255.0f));
         g.fillRect (box (40, 36, 1454, 558));
+        if (dlgMode == 3 || dlgMode == 4) { paintConfirm (g); return; }
         const auto r = box (447, 160, 1047, 462);
         juce::Path pp; pp.addRoundedRectangle (r, 16.0f);
         juce::DropShadow (juce::Colours::black.withAlpha (0.65f), 26, { 5, 10 }).drawForPath (g, pp);
@@ -1202,7 +1362,7 @@ private:
         rr (g, box (471, 182, 515, 226), 10, tint (ACC, 0.16f), tint (ACC, 0.7f), 2);
         icon (g, dlgMode == 1 ? iDl : iPen, 493, 204, 22, ACC, 3);
         text (g, dlgMode == 1 ? "Sync tone" : "Rename folder", 529, 196, pop (2, 19), TXT);
-        text (g, fitText (dlgTone.title, pop (0, 13), 490), 529, 219, pop (0, 13), DIM);
+        text (g, fitText (dlgMode == 5 ? dlgFile.getFileName() : dlgTone.title, pop (0, 13), 490), 529, 219, pop (0, 13), DIM);
         text (g, "Folder name", 471, 259, pop (1, 13), DIM);
         rr (g, box (471, 270, 1023, 314), 11, TILE, tint (ACC, 0.75f), 2);
         const auto name = t3k::Client::safeName (nameEd.getText().trim().isEmpty() ? juce::String ("...") : nameEd.getText().trim());
@@ -1212,6 +1372,11 @@ private:
         const auto rootName = proc.library.getRoot().getFileName();
         const auto sep = juce::String ("  >  ");
         if (dlgError.isNotEmpty()) text (g, dlgError, 471, 334, pop (1, 13), RED, 0, 552);
+        else if (dlgMode == 5)
+        {
+            juce::String in = dlgFile.getParentDirectory().getRelativePathFrom (proc.library.getRoot().getParentDirectory()).replace ("\\", sep).replace ("/", sep);
+            text (g, fitText ("In:  " + in, pop (0, 13), 552), 471, 334, pop (0, 13), DIM, 0, 552);
+        }
         else if (dlgMode == 1) text (g, fitText ("Saved in:  " + rootName + sep + cat + sep + name, pop (0, 13), 552), 471, 334, pop (0, 13), DIM, 0, 552);
         else text (g, fitText ("In:  " + rootName + sep + cat + "   (the tone stays Synced, updates go here)", pop (0, 13), 552), 471, 334, pop (0, 13), DIM, 0, 552);
         if (dlgMode == 1)
@@ -1257,6 +1422,9 @@ private:
 
     void timerCallback() override
     {
+        if (! tipShown && dlgMode == 0 && (hover == hCol1 || hover == hCol2 || hover == hRow || hover == hRowStar)
+             && juce::Time::getMillisecondCounter() - hoverSince >= 800 && hoverTruncated())
+        { tipShown = true; repaint(); }
         if (! isVisible()) return;
         client->setRoot (proc.library.getRoot());
         const auto v = proc.library.getVersion();
@@ -1293,6 +1461,10 @@ private:
     bool revealPending = false, dlgAsk = true;
     int dlgMode = 0;
     t3k::Tone dlgTone;
+    juce::File dlgFile;
+    int dlgCount = 0;
+    juce::uint32 hoverSince = 0;
+    bool tipShown = false;
     juce::String dlgError;
     juce::TextEditor nameEd;
     juce::Array<t3k::Tone> tones;

@@ -1060,4 +1060,19 @@ bool Client::renameLocal (const juce::String& toneId, const juce::String& newNam
     changed();
     return true;
 }
+
+bool Client::isBusy (const juce::File& f) const
+{
+    const juce::ScopedLock sl (lock);
+    for (juce::HashMap<juce::String, Job>::Iterator it (jobs); it.next();)
+    {
+        if (! it.getValue().running) continue;
+        if (! local.contains (it.getKey())) return f.isDirectory();          // nouveau tone : dossier pas encore connu
+        const auto folder = local[it.getKey()].folder;
+        if (folder == f || folder.isAChildOf (f) || f.isAChildOf (folder)) return true;
+    }
+    return false;
+}
+
+void Client::refreshLocal() { pool.addJob ([this] { scanLocal(); }); }
 }
