@@ -409,8 +409,9 @@ void Client::loginFinished (const juce::String& error, const juce::String& toneI
                 if (v.isObject() && ! quitting)
                 {
                     auto t = Tone::fromVar (v);
+                    { const juce::ScopedLock sl (lock); selectedTone = t; }
                     selectCount++;
-                    sync (t);
+                    changed();
                 }
             });
         }
@@ -726,7 +727,7 @@ Job Client::getJob (const juce::String& id) const
     return jobs.contains (id) ? jobs[id] : Job();
 }
 
-void Client::sync (const Tone& t)
+void Client::sync (const Tone& t, const juce::String& folderName)
 {
     {
         const juce::ScopedLock sl (lock);
@@ -735,10 +736,10 @@ void Client::sync (const Tone& t)
         jobs.set (t.id, j);
     }
     changed();
-    pool.addJob ([this, t] { runSync (t); });
+    pool.addJob ([this, t, folderName] { runSync (t, folderName); });
 }
 
-void Client::runSync (Tone t)
+void Client::runSync (Tone t, juce::String folderName)
 {
     auto fail = [this, &t] (const juce::String& e)
     {
@@ -806,7 +807,7 @@ void Client::runSync (Tone t)
     // dossier : celui deja utilise par ce tone, sinon <Categorie>/<nom du tone>
     Local old;
     const bool hadLocal = findLocal (t.id, old);
-    const auto folder = hadLocal ? old.folder : dir.getChildFile (t.category()).getChildFile (safeName (t.title));
+    const auto folder = hadLocal ? old.folder : dir.getChildFile (t.category()).getChildFile (safeName (folderName.trim().isNotEmpty() ? folderName : t.title));
     folder.createDirectory();
     juce::HashMap<juce::String, juce::String> oldDates;    // fichier -> date de la capture deja presente
     if (hadLocal)
@@ -962,6 +963,7 @@ void Client::loadSettings()
         username = x->getStringAttribute ("user");
         avatarUrl = x->getStringAttribute ("avatar");
         versionMode = juce::jlimit (0, numVersionModes - 1, x->getIntAttribute ("versions", vBest));
+        askFolderName = x->getBoolAttribute ("askFolderName", true);
     }
 }
 
@@ -976,6 +978,7 @@ void Client::saveSettings()
         x.setAttribute ("user", username);
         x.setAttribute ("avatar", avatarUrl);
         x.setAttribute ("versions", versionMode);
+        x.setAttribute ("askFolderName", askFolderName);
     }
     CaptureLibrary::settingsDir().createDirectory();
     x.writeTo (settingsFile());
@@ -1019,4 +1022,42 @@ void Client::previewDemo (bool signedIn)
     Job j; j.running = true; j.total = 5; j.done = 3; jobs.set ("3", j);
 }
 #endif
+
+// ---------------------------------------------------------------- nom du dossier
+bool Client::getAskFolderName() const { const juce::ScopedLock sl (lock); return askFolderName; }
+void Client::setAskFolderName (bool b) { { const juce::ScopedLock sl (lock); askFolderName = b; } saveSettings(); changed(); }
+
+Tone Client::takeSelectedTone()
+{
+    const juce::ScopedLock sl (lock);
+    auto t = selectedTone;
+    selectedTone = {};
+    return t;
+}
+
+bool Client::folderTaken (const Tone& t, const juce::String& folderName) const
+{
+    const auto dir = getRoot();
+    Local l;
+    const bool have = findLocal (t.id, l);
+    const auto target = (have ? l.folder.getParentDirectory() : dir.getChildFile (t.category())).getChildFile (safeName (folderName));
+    if (have && target == l.folder) return false;
+    return target.exists();
+}
+
+bool Client::renameLocal (const juce::String& toneId, const juce::String& newName, juce::String& error)
+{
+    Local l;
+    if (! findLocal (toneId, l)) { error = "This tone is not synced"; return false; }
+    if (getJob (toneId).running) { error = "Wait for the download to finish"; return false; }
+    const auto target = l.folder.getParentDirectory().getChildFile (safeName (newName));
+    if (target == l.folder) return true;
+    if (target.exists()) { error = "A folder with this name already exists"; return false; }
+    if (! l.folder.moveFileTo (target)) { error = "Could not rename the folder (is a file in use?)"; return false; }
+    logLine ("renamed " + l.folder.getFullPathName() + " -> " + target.getFileName());
+    scanLocal();
+    libraryVersion++;
+    changed();
+    return true;
+}
 }

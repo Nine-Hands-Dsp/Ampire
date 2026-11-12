@@ -79,7 +79,12 @@ namespace t3k
         juce::uint32 getSelectCount() const { return selectCount.load(); }          // change apres chaque tone choisi par Browse
 
         // ---- synchronisation
-        void sync (const Tone& t);
+        void sync (const Tone& t, const juce::String& folderName = {});   // folderName : nom du dossier d'un tone nouveau
+        bool renameLocal (const juce::String& toneId, const juce::String& newName, juce::String& error);
+        bool folderTaken (const Tone& t, const juce::String& folderName) const;   // un autre dossier porte deja ce nom
+        bool getAskFolderName() const;
+        void setAskFolderName (bool b);
+        Tone takeSelectedTone();             // tone choisi par Browse TONE3000 (une seule fois)
         Job getJob (const juce::String& toneId) const;
         int getVersionMode() const;
         void setVersionMode (int m);
@@ -106,7 +111,7 @@ namespace t3k
         void fetchUser();
         void loginFinished (const juce::String& error, const juce::String& selectedToneId);
         void fetchPage (Tab t, int page);
-        void runSync (Tone t);
+        void runSync (Tone t, juce::String folderName);
         void scanLocal();
         void checkUpdates();
         void loadSettings();
@@ -116,6 +121,8 @@ namespace t3k
         juce::String access, refresh_, username, avatarUrl, authError;
         juce::int64 expiresAt = 0;
         int versionMode = vBest;
+        bool askFolderName = true;
+        Tone selectedTone;
         juce::File root;
         ListState lists[numTabs];
         juce::HashMap<juce::String, Local> local;            // cle : id du tone

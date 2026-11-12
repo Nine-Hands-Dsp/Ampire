@@ -611,7 +611,7 @@ public:
     ~AmpireContent() override = default;
     void openLibrary (int s) { library.open (s); }
    #if AMPIRE_TOOL
-    void previewLibrary (int tab, bool signedIn) { library.previewDemo (signedIn); library.open (0); library.setTab (tab); }
+    void previewLibrary (int tab, bool signedIn) { library.previewDemo (signedIn); library.open (0); library.setTab (tab % 10); if (tab >= 10) library.previewDialog (tab / 10); }
    #endif
 
     // ---------------------------------------------------------------- dessin

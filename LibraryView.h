@@ -49,7 +49,7 @@ namespace lv
     inline float textW (const String& s, const Font& f) { return GlyphArrangement::getStringWidth (f, s); }
 
     // ---- icones (grille de 16, comme les icones des menus Octopus)
-    enum Ico { iFolder, iSearch, iStar, iStarF, iClock, iAll, iAmp, iPedal, iRig, iCab, iRefresh, iFile, iX, iChev, iDl, iCheck, iTrend, iUser, iExt };
+    enum Ico { iFolder, iSearch, iStar, iStarF, iClock, iAll, iAmp, iPedal, iRig, iCab, iRefresh, iFile, iX, iChev, iDl, iCheck, iTrend, iUser, iExt, iPen };
     inline void icon (Graphics& g, Ico kind, float cx, float cy, float s, Colour c, float w = 3.0f)
     {
         const float k = s / 16.0f;
@@ -110,6 +110,7 @@ namespace lv
                 ell (-3.2f, -7, 3.2f, -0.6f);
                 p.addCentredArc (cx, cy + 7.5f * k, 6.5f * k, 6.5f * k, 0.0f, -MathConstants<float>::halfPi, MathConstants<float>::halfPi, true);
                 break;
+            case iPen:     poly ({ { 3, 13 }, { 4, 9.5f }, { 11.5f, 2 }, { 14, 4.5f }, { 6.5f, 12 } }, true); break;
             case iExt:     poly ({ { 9, 2 }, { 14, 2 }, { 14, 7 } }); poly ({ { 14, 2 }, { 7, 9 } }); poly ({ { 12, 10 }, { 12, 14 }, { 2, 14 }, { 2, 4 }, { 6, 4 } }); break;
         }
         g.setColour (c);
@@ -225,6 +226,18 @@ public:
         search.onReturnKey = [this] { if (! rows.isEmpty()) loadRow (juce::jmax (0, rowIndexOfLoaded()), true); };
         search.addKeyListener (this);
         addAndMakeVisible (search);
+        nameEd.setColour (juce::TextEditor::backgroundColourId, juce::Colours::transparentBlack);
+        nameEd.setColour (juce::TextEditor::outlineColourId, juce::Colours::transparentBlack);
+        nameEd.setColour (juce::TextEditor::focusedOutlineColourId, juce::Colours::transparentBlack);
+        nameEd.setColour (juce::TextEditor::textColourId, TXT);
+        nameEd.setColour (juce::TextEditor::highlightColourId, ACC.withAlpha (0.35f));
+        nameEd.setColour (juce::CaretComponent::caretColourId, ACC);
+        nameEd.setIndents (0, 0);
+        nameEd.setJustification (juce::Justification::centredLeft);
+        nameEd.onTextChange = [this] { dlgError.clear(); repaint(); };
+        nameEd.onReturnKey = [this] { confirmDialog(); };
+        nameEd.onEscapeKey = [this] { closeDialog(); };
+        addChildComponent (nameEd);
         client->addChangeListener (this);
         drawnSelect = client->getSelectCount();
         drawnLibVersion = client->getLibraryVersion();
@@ -257,10 +270,11 @@ public:
         if (tab == 1 && client->isSignedIn()) ensureLoaded (true);
         repaint();
     }
-    void close() { setVisible (false); if (onClose) onClose(); }
+    void close() { if (dlgMode != 0) { dlgMode = 0; placeSearch(); } setVisible (false); if (onClose) onClose(); }
     void setTab (int t) { tab = t; placeSearch(); if (tab == 1 && client->isSignedIn()) ensureLoaded (true); repaint(); }
    #if AMPIRE_TOOL
     void previewDemo (bool signedIn) { client->previewDemo (signedIn); repaint(); }
+    void previewDialog (int mode) { const auto l = client->getList (t3k::favorites); if (l.tones.size() > 1) openDialog (mode, l.tones[mode == 2 ? 0 : 1]); }
    #endif
 
     void resized() override { placeSearch(); }
@@ -303,6 +317,7 @@ public:
         iconButton (g, 1390, iX, hover == hClose);
 
         if (tab == 0) paintLibrary (g); else paintTone3000 (g);
+        if (dlgMode != 0) paintDialog (g);
     }
 
     // ======================================================================== souris / clavier
@@ -316,6 +331,7 @@ public:
     }
     void mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w) override
     {
+        if (dlgMode != 0) return;
         const auto p = m (e);
         const float d = -w.deltaY * 260.0f;
         if (tab == 0)
@@ -338,7 +354,8 @@ public:
 private:
     // ---------------------------------------------------------------- zones cliquables
     enum HitKind { hNone, hTab0, hTab1, hClose, hFolderBtn, hRescan, hCol1, hCol2, hRowStar, hRow,
-                   hPill, hVersions, hBrowse, hAvatar, hSignOut, hCard, hCardBtn, hConnect, hCancel, hRetry, hChoose };
+                   hPill, hVersions, hBrowse, hAvatar, hSignOut, hCard, hCardBtn, hConnect, hCancel, hRetry, hChoose,
+                   hDlgCancel, hDlgOk, hDlgCheck, hDlgBlock };
     struct Hit
     {
         int kind = hNone, index = -1;
@@ -358,7 +375,10 @@ private:
         const float sx = (float) getWidth() / lv::kMw, sy = (float) getHeight() / lv::kMh;
         search.setBounds (juce::Rectangle<float> (924 * sx, 58 * sy, 346 * sx, 40 * sy).toNearestInt());
         search.setFont (lv::pop (0, 16.0f * sy));
-        search.setVisible (tab == 0);
+        search.setVisible (tab == 0 && dlgMode == 0);
+        nameEd.setBounds (juce::Rectangle<float> (489 * sx, 274 * sy, 520 * sx, 38 * sy).toNearestInt());
+        nameEd.setFont (lv::pop (0, 16.0f * sy));
+        nameEd.setVisible (dlgMode != 0);
     }
 
     juce::String subtitle() const
@@ -647,7 +667,7 @@ private:
     }
     bool handleKey (const juce::KeyPress& k)
     {
-        if (k == juce::KeyPress::escapeKey) { close(); return true; }
+        if (k == juce::KeyPress::escapeKey) { if (dlgMode != 0) closeDialog(); else close(); return true; }
         if (tab != 0 || rows.isEmpty()) return false;
         if (k == juce::KeyPress::downKey || k == juce::KeyPress::upKey)
         {
@@ -911,6 +931,13 @@ private:
     {
         using namespace lv;
         auto in = [&] (juce::Rectangle<float> r) { return r.contains (p); };
+        if (dlgMode != 0)
+        {
+            if (in (box (749, 402, 881, 442))) return { hDlgCancel };
+            if (in (box (891, 402, 1023, 442))) return { hDlgOk };
+            if (dlgMode == 1 && in (box (471, 356, 820, 380))) return { hDlgCheck };
+            return { hDlgBlock };
+        }
         if (in (box (321, 59, 459, 97))) return { hTab0 };
         if (in (box (457, 59, 595, 97))) return { hTab1 };
         if (in (box (1390, 56, 1434, 100))) return { hClose };
@@ -957,6 +984,10 @@ private:
     {
         switch (h.kind)
         {
+            case hDlgCancel: closeDialog(); return;
+            case hDlgOk: confirmDialog(); return;
+            case hDlgCheck: dlgAsk = ! dlgAsk; repaint(); return;
+            case hDlgBlock: return;
             case hTab0: case hTab1:
                 tab = h.kind == hTab1 ? 1 : 0;
                 placeSearch();
@@ -1003,9 +1034,13 @@ private:
         switch (stateOf (t))
         {
             case csSync: case csUpdate: case csFailed:
+            {
                 if (! proc.library.getRoot().isDirectory()) { if (auto* ed = findParentComponentOfClass<AmpireEditor>()) ed->chooseFolder (true); return; }
-                client->sync (t);
+                t3k::Local l;
+                if (! client->findLocal (t.id, l) && client->getAskFolderName()) openDialog (1, t);
+                else client->sync (t);
                 break;
+            }
             case csSynced: loadTone (t); break;
             default: break;
         }
@@ -1098,25 +1133,123 @@ private:
             t3k::Local l;
             const bool have = client->findLocal (t.id, l);
             mm.addItem (1, have ? "Sync again" : "Sync");
+            mm.addItem (4, "Rename folder...", have);
             mm.addItem (2, "Show in folder", have);
             mm.addItem (3, "Open on TONE3000");
-            MenuStyle::styled (mm, menuLookFor (this)).showMenuAsync (juce::PopupMenu::Options(), [sp, t, folder = l.folder] (int res)
+            mm.addSeparator();
+            mm.addItem (5, "Ask for the folder name when syncing", true, client->getAskFolderName());
+            MenuStyle::styled (mm, menuLookFor (this)).showMenuAsync (juce::PopupMenu::Options(), [sp, t, have, folder = l.folder] (int res)
             {
                 if (sp == nullptr) return;
-                if (res == 1) sp->client->sync (t);
+                if (res == 1) { if (! have && sp->client->getAskFolderName()) sp->openDialog (1, t); else sp->client->sync (t); }
                 else if (res == 2) folder.revealToUser();
                 else if (res == 3) juce::URL (t.url).launchInDefaultBrowser();
+                else if (res == 4) sp->openDialog (2, t);
+                else if (res == 5) sp->client->setAskFolderName (! sp->client->getAskFolderName());
             });
         }
+    }
+
+    // ================================================================ nom du dossier (au SYNC, ou Rename folder...)
+    void openDialog (int mode, const t3k::Tone& t)
+    {
+        dlgMode = mode;
+        dlgTone = t;
+        dlgError.clear();
+        dlgAsk = client->getAskFolderName();
+        t3k::Local l;
+        const auto name = mode == 2 && client->findLocal (t.id, l) ? l.folder.getFileName() : t3k::Client::safeName (t.title);
+        nameEd.setText (name, false);
+        placeSearch();
+        nameEd.grabKeyboardFocus();
+        nameEd.selectAll();
+        repaint();
+    }
+    void closeDialog()
+    {
+        dlgMode = 0;
+        placeSearch();
+        if (tab == 0) search.grabKeyboardFocus(); else grabKeyboardFocus();
+        repaint();
+    }
+    void confirmDialog()
+    {
+        const auto name = nameEd.getText().trim();
+        if (name.isEmpty()) { dlgError = "Type a folder name"; repaint(); return; }
+        if (dlgMode == 1)
+        {
+            if (client->folderTaken (dlgTone, name)) { dlgError = "A folder with this name already exists"; repaint(); return; }
+            if (dlgAsk != client->getAskFolderName()) client->setAskFolderName (dlgAsk);
+            client->sync (dlgTone, name);
+        }
+        else
+        {
+            juce::String err;
+            if (! client->renameLocal (dlgTone.id, name, err)) { dlgError = err; repaint(); return; }
+            proc.library.rescan();
+        }
+        closeDialog();
+    }
+    void paintDialog (juce::Graphics& g)
+    {
+        using namespace lv;
+        g.setColour (juce::Colours::black.withAlpha (120.0f / 255.0f));
+        g.fillRect (box (40, 36, 1454, 558));
+        const auto r = box (447, 160, 1047, 462);
+        juce::Path pp; pp.addRoundedRectangle (r, 16.0f);
+        juce::DropShadow (juce::Colours::black.withAlpha (0.65f), 26, { 5, 10 }).drawForPath (g, pp);
+        rr (g, r, 16, BG, BORDER, 2);
+        rr (g, box (471, 182, 515, 226), 10, tint (ACC, 0.16f), tint (ACC, 0.7f), 2);
+        icon (g, dlgMode == 1 ? iDl : iPen, 493, 204, 22, ACC, 3);
+        text (g, dlgMode == 1 ? "Sync tone" : "Rename folder", 529, 196, pop (2, 19), TXT);
+        text (g, fitText (dlgTone.title, pop (0, 13), 490), 529, 219, pop (0, 13), DIM);
+        text (g, "Folder name", 471, 259, pop (1, 13), DIM);
+        rr (g, box (471, 270, 1023, 314), 11, TILE, tint (ACC, 0.75f), 2);
+        const auto name = t3k::Client::safeName (nameEd.getText().trim().isEmpty() ? juce::String ("...") : nameEd.getText().trim());
+        t3k::Local l;
+        const bool have = client->findLocal (dlgTone.id, l);
+        const auto cat = have ? l.folder.getParentDirectory().getFileName() : dlgTone.category();
+        const auto rootName = proc.library.getRoot().getFileName();
+        const auto sep = juce::String ("  >  ");
+        if (dlgError.isNotEmpty()) text (g, dlgError, 471, 334, pop (1, 13), RED, 0, 552);
+        else if (dlgMode == 1) text (g, fitText ("Saved in:  " + rootName + sep + cat + sep + name, pop (0, 13), 552), 471, 334, pop (0, 13), DIM, 0, 552);
+        else text (g, fitText ("In:  " + rootName + sep + cat + "   (the tone stays Synced, updates go here)", pop (0, 13), 552), 471, 334, pop (0, 13), DIM, 0, 552);
+        if (dlgMode == 1)
+        {
+            const auto cb = box (471, 358, 491, 378);
+            if (dlgAsk)
+            {
+                rr (g, cb, 5, tint (ACC, 0.2f), tint (ACC, 0.8f), 2);
+                juce::Path ck; ck.startNewSubPath (475, 368); ck.lineTo (480, 373); ck.lineTo (488, 362);
+                g.setColour (ACC); g.strokePath (ck, juce::PathStrokeType (3.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+            }
+            else rr (g, cb, 5, TILE, hover == hDlgCheck ? DIM : FAINT, 2);
+            text (g, "Ask for the folder name each time I sync", 501, 368, pop (0, 13), hover == hDlgCheck ? TXT : DIM, 0, 400);
+        }
+        rr (g, box (749, 402, 881, 442), 10, hover == hDlgCancel ? tint (TXT, 0.08f, HOVER) : HOVER, BORDER, 2);
+        text (g, "Cancel", 815, 422, pop (1, 14), TXT, 1, 132);
+        rr (g, box (891, 402, 1023, 442), 10, hover == hDlgOk ? ACC.brighter (0.15f) : ACC);
+        text (g, dlgMode == 1 ? "SYNC" : "RENAME", 957, 422, pop (2, 14), INK, 1, 132);
     }
 
     // ================================================================ mises a jour
     void changeListenerCallback (juce::ChangeBroadcaster*) override
     {
-        if (! isVisible()) return;
-        // tone choisi par Browse TONE3000 : affiche dans Synced
+        // tone choisi par Browse TONE3000 : nom du dossier demande (si reglé), puis affiche dans Synced
         const auto sc = client->getSelectCount();
-        if (sc != drawnSelect) { drawnSelect = sc; ttab = t3k::synced; scGrid = 0; tab = 1; placeSearch(); }
+        if (sc != drawnSelect)
+        {
+            drawnSelect = sc;
+            const auto t = client->takeSelectedTone();
+            if (t.id.isNotEmpty())
+            {
+                ttab = t3k::synced; scGrid = 0; tab = 1;
+                if (isVisible() && client->getAskFolderName()) openDialog (1, t);
+                else client->sync (t);
+                placeSearch();
+            }
+        }
+        if (! isVisible()) return;
         const auto lvv = client->getLibraryVersion();
         if (lvv != drawnLibVersion) { drawnLibVersion = lvv; proc.library.rescan(); }
         repaint();
@@ -1157,7 +1290,11 @@ private:
     juce::String sel1, sel2, pendingReveal, drawnLoaded;
     float sc1 = 0, sc2 = 0, sc3 = 0, scGrid = 0;
     int tab = 0, ttab = t3k::favorites, tick = 0;
-    bool revealPending = false;
+    bool revealPending = false, dlgAsk = true;
+    int dlgMode = 0;
+    t3k::Tone dlgTone;
+    juce::String dlgError;
+    juce::TextEditor nameEd;
     juce::Array<t3k::Tone> tones;
     Hit hover;
     juce::uint32 drawnVersion = 0, drawnLibVersion = 0, drawnSelect = 0;

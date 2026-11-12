@@ -17,7 +17,7 @@ from reportlab.pdfbase.ttfonts import TTFont
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SHOTS, OUT = sys.argv[1], sys.argv[2]
-VERSION = "1.1.0"
+VERSION = "1.1.4"
 TMP = os.path.dirname(os.path.abspath(OUT))
 MA = os.path.join(ROOT, "tools", "manual_assets")
 for n, f in (("Pop", os.path.join(ROOT, "assets", "Poppins-Regular.ttf")), ("PopM", os.path.join(ROOT, "assets", "Poppins-Medium.ttf")),
@@ -184,6 +184,7 @@ story += [P("4. Captures, bibliothèque et TONE3000", "h1"),
     img(t3k_img, W * 0.82), P("Les tones favoris sur TONE3000 (exemple).", "small"),
     *bullets(["<b>Favorites</b> (vos favoris sur TONE3000), <b>Synced</b> (les tones déjà téléchargés par Ampire), <b>Created</b> (vos propres tones), <b>Trending</b> et <b>Latest</b> (les 10 tones du moment et les 10 plus récents). Les cartes défilent vers le bas à la molette et la suite se charge toute seule.",
               "Chaque carte montre l'image du tone, son titre, son type, son format (A2, A1 ou IR) et son auteur. Le bouton suit l'état du tone : <b>SYNC</b> le télécharge, <b>DOWNLOADING n / N</b> pendant le téléchargement, <b>SYNCED · LOAD</b> une fois téléchargé (un clic passe dans l'onglet Library sur le dossier du tone et charge sa capture A2), <b>UPDATE AVAILABLE</b> quand l'auteur a publié une nouvelle version. Clic droit : télécharger à nouveau, afficher dans le dossier, ouvrir la page TONE3000.",
+              "<b>Nom du dossier</b> : au clic sur SYNC, une petite fenêtre propose le titre du tone comme nom de dossier ; modifiez-le si vous voulez, puis Entrée ou SYNC. La case « Ask for the folder name each time I sync » permet de ne plus être interrogé (réglage repris par clic droit sur une carte). Un dossier déjà synchronisé se renomme par clic droit &gt; <b>Rename folder...</b> : le tone reste « Synced » et ses mises à jour vont dans le dossier renommé. On peut aussi renommer ou déplacer le dossier dans l'Explorateur / le Finder : Ampire le retrouve grâce à son metadata.json.",
               "<b>Browse TONE3000</b> ouvre le catalogue complet de TONE3000 dans le navigateur : le tone choisi est téléchargé et apparaît dans <b>Synced</b>.",
               "<b>Versions</b> (à droite) : <b>Best</b> (par défaut) ne garde qu'une version de chaque capture, A2 sinon A1 ; ou <b>A2 only</b>, <b>A1 only</b>, <b>Custom only</b>, <b>All versions</b>. Les IR sont toujours gardées.",
               "<b>Rangement</b> (le même que NAMMAN) : <b>&lt;dossier&gt;/&lt;catégorie&gt;/&lt;nom du tone&gt;/</b> avec un fichier <b>metadata.json</b> ; catégories <b>Amp_and_Cab</b>, <b>Amps</b>, <b>Pedals</b>, <b>Cabinets_IRs</b> (les IR, pour Impulse), <b>Spaces</b>, <b>Outboard</b>, <b>Experimental</b>. À une mise à jour, les anciennes versions sont déplacées dans <b>_Archive</b> : rien n'est jamais effacé.",
