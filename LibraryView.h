@@ -1653,12 +1653,19 @@ private:
             const float step = 1.0f / (0.15f * 60.0f);
             const float before = ex, beforeH = exH;
             const bool wasCompact = compact();
+            const float m1 = maxScroll (col1.size()), m2 = maxScroll (col2.size()), m3 = maxScroll (rows.size()), mg = gridMaxScroll();
             ex = target > ex ? juce::jmin (target, ex + step) : juce::jmax (target, ex - step);
             exH = juce::jmin (1.0f, exH + step);
             if (compact() != wasCompact) placeSearch();
             if (ex != before || exH != beforeH)
-            { sc1 = juce::jlimit (0.0f, maxScroll (col1.size()), sc1); sc2 = juce::jlimit (0.0f, maxScroll (col2.size()), sc2);
-              sc3 = juce::jlimit (0.0f, maxScroll (rows.size()), sc3); scGrid = juce::jlimit (0.0f, gridMaxScroll(), scGrid); repaint(); }
+            {
+                // l'en-tete qui se reduit ou revient change la hauteur visible : une colonne arrivee en bas y reste (elle ne
+                // remonte pas), les autres gardent leur position ; chaque colonne est traitee seule
+                auto keep = [] (float& sc, float oldMax, float newMax) { sc = sc >= oldMax - 0.5f && oldMax > 0.0f ? newMax : juce::jlimit (0.0f, newMax, sc); };
+                keep (sc1, m1, maxScroll (col1.size())); keep (sc2, m2, maxScroll (col2.size()));
+                keep (sc3, m3, maxScroll (rows.size())); keep (scGrid, mg, gridMaxScroll());
+                repaint();
+            }
             else if (getTimerInterval() < 50) startTimerHz (10);      // animation finie : rythme normal
             if (auto* hp = homeParent.getComponent())                 // Ampire deplace ou redimensionne : la fenetre suit
             {

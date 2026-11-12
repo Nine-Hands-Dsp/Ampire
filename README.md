@@ -9,7 +9,7 @@ Neural Amp Modeler capture loader (A1 and A2) for guitar and bass — VST3 (Wind
   <br>
   <a href="https://github.com/Nine-Hands-Dsp/Ampire/releases/latest"><img alt="Dernière version" src="https://img.shields.io/github/v/release/Nine-Hands-Dsp/Ampire?label=derni%C3%A8re%20version&color=919496"></a>
   <br>
-  <a href="https://github.com/Nine-Hands-Dsp/Ampire/raw/main/docs/Ampire_Notice_FR_v1.1.9.pdf"><img alt="Notice (PDF)" src="https://img.shields.io/badge/%F0%9F%93%96%20Notice-PDF%20fran%C3%A7ais-E8701A?style=for-the-badge"></a>
+  <a href="https://github.com/Nine-Hands-Dsp/Ampire/raw/main/docs/Ampire_Notice_FR_v1.1.10.pdf"><img alt="Notice (PDF)" src="https://img.shields.io/badge/%F0%9F%93%96%20Notice-PDF%20fran%C3%A7ais-E8701A?style=for-the-badge"></a>
 </p>
 
 ## Fonctions
