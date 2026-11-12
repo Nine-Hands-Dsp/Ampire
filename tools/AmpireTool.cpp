@@ -51,7 +51,7 @@ int main (int argc, char** argv)
             juce::MessageManager::getInstance()->runDispatchLoopUntil (25);
         }
         juce::Component* shotOf = ed.get();
-        if (arg (11) == "x") if (auto* ae = dynamic_cast<AmpireEditor*> (ed.get())) { shotOf = ae->previewExpanded(); juce::MessageManager::getInstance()->runDispatchLoopUntil (100); }
+        if (arg (11) == "x" || arg (11) == "y") if (auto* ae = dynamic_cast<AmpireEditor*> (ed.get())) { shotOf = ae->previewExpanded (arg (11) == "x"); juce::MessageManager::getInstance()->runDispatchLoopUntil (100); }
         auto img = shotOf->createComponentSnapshot (shotOf->getLocalBounds(), true, scale);
         juce::File out (arg (2));
         out.deleteFile();

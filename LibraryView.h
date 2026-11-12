@@ -276,7 +276,7 @@ public:
     void setTab (int t) { tab = t; placeSearch(); if (tab == 1 && client->isSignedIn()) ensureLoaded (true); repaint(); }
    #if AMPIRE_TOOL
     void previewDemo (bool signedIn) { client->previewDemo (signedIn); repaint(); }
-    void previewExpanded() { ex = target = 1.0f; setSize (getWidth(), juce::roundToInt ((float) getHeight() * (lv::kMh + 522.0f * kGrow) / lv::kMh)); placeSearch(); repaint(); }
+    void previewExpanded (bool scrolling) { exH = 1.0f; ex = target = scrolling ? 1.0f : 0.0f; setSize (getWidth(), juce::roundToInt ((float) getHeight() * (lv::kMh + 522.0f * kGrow) / lv::kMh)); placeSearch(); repaint(); }
     void previewDialog (int mode)
     {
         if (mode >= 3) { const auto f = proc.library.getRoot().getChildFile ("Mesa Boogie Dual Rectifier Rev G"); openFileDialog (mode, mode == 4 ? f.getChildFile ("DI").getChildFile ("MESRectoRevG_Green_BalancedClean_DI.nam") : f, 4); return; }
@@ -361,7 +361,7 @@ public:
             juce::Component::SafePointer<LibraryPanel> sp (this);
             juce::MessageManager::callAsync ([sp] { if (sp != nullptr && sp->isShowing()) { sp->startFloat(); sp->target = 1.0f; sp->startTimerHz (60); } });
         }
-        else target = 1.0f;
+        else { target = 1.0f; startTimerHz (60); }
         const float d = -w.deltaY * 260.0f;
         if (tab == 0)
         {
@@ -404,7 +404,7 @@ private:
         const float sx = (float) getWidth() / lv::kMw, sy = sx;
         search.setBounds (juce::Rectangle<float> (924 * sx, 58 * sy, 346 * sx, 40 * sy).toNearestInt());
         search.setFont (lv::pop (0, 16.0f * sy));
-        search.setVisible (tab == 0 && dlgMode == 0 && ! floating);
+        search.setVisible (tab == 0 && dlgMode == 0 && ! compact());
         nameEd.setBounds (juce::Rectangle<float> (489 * sx, 274 * sy, 520 * sx, 38 * sy).toNearestInt());
         nameEd.setFont (lv::pop (0, 16.0f * sy));
         nameEd.setVisible (dlgMode != 0);
@@ -429,8 +429,9 @@ private:
     // ================================================================ LIBRARY (3 colonnes)
     // ---- agrandissement pendant le defilement : la bibliotheque devient une fenetre flottante qui deborde sous Ampire
     static constexpr float kGrow = 0.6f;                         // +60 % de la hauteur du panneau
+    // ex : en-tete reduit (pendant le defilement seulement) ; exH : hauteur ajoutee (gardee jusqu'a la croix)
     float lift() const { return 82.0f * ex; }                    // en-tete reduit a une ligne
-    float extraH() const { return 522.0f * kGrow * ex; }         // hauteur ajoutee sous Ampire
+    float extraH() const { return 522.0f * kGrow * exH; }        // hauteur ajoutee sous Ampire
     bool compact() const { return ex > 0.02f; }
     void startFloat()
     {
@@ -442,7 +443,8 @@ private:
         const int h = juce::roundToInt ((float) sb.getHeight() * (lv::kMh + 522.0f * kGrow) / lv::kMh);
         parent->removeChildComponent (this);
         floating = true;
-        addToDesktop (juce::ComponentPeer::windowIsTemporary | juce::ComponentPeer::windowIgnoresKeyPresses);
+        homeBounds = sb;
+        addToDesktop (juce::ComponentPeer::windowIsTemporary);   // recoit le clavier : recherche, noms de dossiers
         setBounds (sb.withHeight (h));
         setVisible (true);
         placeSearch();
@@ -452,7 +454,7 @@ private:
     {
         if (! floating) return;
         floating = false;
-        ex = target = 0.0f;
+        ex = target = exH = 0.0f;
         removeFromDesktop();
         if (auto* parent = homeParent.getComponent())
         {
@@ -1571,7 +1573,7 @@ private:
     {
         using namespace lv;
         g.setColour (juce::Colours::black.withAlpha (120.0f / 255.0f));
-        g.fillRect (box (40, 36, 1454, 558));
+        g.fillRect (box (40, 36, 1454, 558 + extraH()));
         if (dlgMode == 3 || dlgMode == 4) { paintConfirm (g); return; }
         const auto r = box (447, 160, 1047, 462);
         juce::Path pp; pp.addRoundedRectangle (r, 16.0f);
@@ -1643,14 +1645,30 @@ private:
         if (floating)
         {
             const auto now = juce::Time::getMillisecondCounter();
+            // l'en-tete complet (onglets, recherche, croix) revient quand la molette s'arrete ; la hauteur reste jusqu'a la croix
             if (dragWhich == 0 && now - lastWheel > 600) target = 0.0f;
             const float step = 1.0f / (0.15f * 60.0f);
-            const float before = ex;
+            const float before = ex, beforeH = exH;
+            const bool wasCompact = compact();
             ex = target > ex ? juce::jmin (target, ex + step) : juce::jmax (target, ex - step);
-            if (ex != before) { sc1 = juce::jlimit (0.0f, maxScroll (col1.size()), sc1); sc2 = juce::jlimit (0.0f, maxScroll (col2.size()), sc2);
-                                sc3 = juce::jlimit (0.0f, maxScroll (rows.size()), sc3); scGrid = juce::jlimit (0.0f, gridMaxScroll(), scGrid); repaint(); }
-            if (ex <= 0.0f && target <= 0.0f) { endFloat(); startTimerHz (10); }
-            return;
+            exH = juce::jmin (1.0f, exH + step);
+            if (compact() != wasCompact) placeSearch();
+            if (ex != before || exH != beforeH)
+            { sc1 = juce::jlimit (0.0f, maxScroll (col1.size()), sc1); sc2 = juce::jlimit (0.0f, maxScroll (col2.size()), sc2);
+              sc3 = juce::jlimit (0.0f, maxScroll (rows.size()), sc3); scGrid = juce::jlimit (0.0f, gridMaxScroll(), scGrid); repaint(); }
+            else if (getTimerInterval() < 50) startTimerHz (10);      // animation finie : rythme normal
+            if (auto* hp = homeParent.getComponent())                 // Ampire deplace ou redimensionne : la fenetre suit
+            {
+                if (! hp->isShowing()) { close(); return; }            // fenetre d'Ampire fermee ou cachee
+                const auto sb = hp->getScreenBounds();
+                if (! sb.isEmpty() && sb != homeBounds)
+                {
+                    homeBounds = sb;
+                    setBounds (sb.withHeight (juce::roundToInt ((float) sb.getHeight() * (lv::kMh + 522.0f * kGrow) / lv::kMh)));
+                    placeSearch();
+                }
+            }
+            if (getTimerInterval() < 50) return;
         }
         if (! tipShown && dlgMode == 0 && (hover == hCol1 || hover == hCol2 || hover == hRow || hover == hRowStar)
              && juce::Time::getMillisecondCounter() - hoverSince >= 800 && hoverTruncated())
@@ -1689,10 +1707,11 @@ private:
     float sc1 = 0, sc2 = 0, sc3 = 0, scGrid = 0;
     int tab = 0, ttab = t3k::favorites, tick = 0;
     bool revealPending = false, dlgAsk = true, floating = false;
-    float ex = 0.0f, target = 0.0f, dragStartY = 0.0f, dragStartScroll = 0.0f;
+    float ex = 0.0f, exH = 0.0f, target = 0.0f, dragStartY = 0.0f, dragStartScroll = 0.0f;
     int dragWhich = 0;
     juce::uint32 lastWheel = 0;
     juce::Component::SafePointer<juce::Component> homeParent;
+    juce::Rectangle<int> homeBounds;
     int dlgMode = 0;
     t3k::Tone dlgTone;
     juce::File dlgFile;
