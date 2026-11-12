@@ -614,6 +614,7 @@ void Client::fetchPage (Tab t, int page)
 // ---------------------------------------------------------------- tones synchronises
 void Client::setRoot (const juce::File& dir)
 {
+    if (! dir.isDirectory()) return;       // une fenetre sans dossier ne vide pas la liste des autres
     {
         const juce::ScopedLock sl (lock);
         if (dir == root) return;
@@ -1075,4 +1076,86 @@ bool Client::isBusy (const juce::File& f) const
 }
 
 void Client::refreshLocal() { pool.addJob ([this] { scanLocal(); }); }
+
+// ---------------------------------------------------------------- Re-sync
+void Client::setNotice (const juce::String& s)
+{
+    { const juce::ScopedLock sl (lock); notice = s; noticeUntil = juce::Time::getMillisecondCounter() + 8000; }
+    changed();
+}
+
+juce::String Client::getNotice() const
+{
+    const juce::ScopedLock sl (lock);
+    return juce::Time::getMillisecondCounter() < noticeUntil ? notice : juce::String();
+}
+
+void Client::rescanAll()
+{
+    { const juce::ScopedLock sl (lock); remoteDates.clear(); }
+    pool.addJob ([this]
+    {
+        scanLocal();
+        int n = 0;
+        { const juce::ScopedLock sl (lock); n = local.size(); }
+        setNotice (juce::String (n) + (n == 1 ? " synced tone found" : " synced tones found") + " in your capture folder");
+        checkUpdates();
+    });
+}
+
+void Client::importFolder (const juce::File& src)
+{
+    pool.addJob ([this, src]
+    {
+        const auto dir = getRoot();
+        if (! dir.isDirectory()) return;
+        if (src == dir || src.isAChildOf (dir)) { scanLocal(); setNotice ("This folder is already in your capture folder: rescanned"); return; }
+        int moved = 0, skipped = 0, failed = 0;
+        juce::Array<juce::File> metas;
+        for (const auto& e : juce::RangedDirectoryIterator (src, true, "metadata.json", juce::File::findFiles))
+            if (! e.getFile().getFullPathName().contains ("_Archive")) metas.add (e.getFile());
+        for (auto& meta : metas)
+        {
+            if (quitting) return;
+            const auto v = juce::JSON::parse (meta);
+            if (! v.isObject() || str (v["id"]).isEmpty()) continue;
+            const auto toneDir = meta.getParentDirectory();
+            const auto t = Tone::fromVar (v);
+            // categorie : dossier parent quand il est sous le dossier choisi (rangement NAMMAN), sinon d'apres le type du tone
+            const auto parent = toneDir.getParentDirectory();
+            const auto cat = parent != src && parent.isAChildOf (src) ? parent.getFileName() : (parent == src ? t.category() : t.category());
+            const auto target = dir.getChildFile (cat).getChildFile (toneDir.getFileName());
+            if (target.exists()) { ++skipped; continue; }
+            target.getParentDirectory().createDirectory();
+            bool ok = toneDir.moveFileTo (target);
+            if (! ok && toneDir.copyDirectoryTo (target)) ok = toneDir.moveToTrash() || true;
+            if (ok) ++moved; else ++failed;
+            logLine ("import " + toneDir.getFullPathName() + " -> " + target.getFullPathName() + (ok ? "" : " : failed"));
+        }
+        scanLocal();
+        libraryVersion++;
+        juce::String msg = juce::String (moved) + (moved == 1 ? " tone added" : " tones added");
+        if (skipped > 0) msg << ", " << skipped << " already in your capture folder";
+        if (failed > 0) msg << ", " << failed << " could not be moved";
+        if (metas.isEmpty()) msg = "No synced tone found in this folder";
+        setNotice (msg);
+        checkUpdates();
+    });
+}
+
+void Client::updateAll()
+{
+    juce::Array<Tone> todo;
+    {
+        const juce::ScopedLock sl (lock);
+        for (juce::HashMap<juce::String, Local>::Iterator it (local); it.next();)
+        {
+            const auto& l = it.getValue();
+            const auto remote = remoteDates.contains (it.getKey()) ? remoteDates[it.getKey()] : juce::String();
+            if (remote.isNotEmpty() && l.tone.updatedAt.isNotEmpty() && remote > l.tone.updatedAt) todo.add (l.tone);
+        }
+    }
+    for (auto& t : todo) sync (t);
+    setNotice (todo.isEmpty() ? juce::String ("All synced tones are up to date") : juce::String (todo.size()) + (todo.size() == 1 ? " tone is being updated" : " tones are being updated"));
+}
 }

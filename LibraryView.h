@@ -362,7 +362,7 @@ public:
 private:
     // ---------------------------------------------------------------- zones cliquables
     enum HitKind { hNone, hTab0, hTab1, hClose, hFolderBtn, hRescan, hCol1, hCol2, hRowStar, hRow,
-                   hPill, hVersions, hBrowse, hAvatar, hSignOut, hCard, hCardBtn, hConnect, hCancel, hRetry, hChoose,
+                   hPill, hVersions, hBrowse, hAvatar, hSignOut, hCard, hCardBtn, hConnect, hCancel, hRetry, hChoose, hResync,
                    hDlgCancel, hDlgOk, hDlgCheck, hDlgBlock };
     struct Hit
     {
@@ -811,6 +811,12 @@ private:
             text (g, n[i], r.getCentreX(), 137, pop (1, 15), s ? ACC : DIM, 1, r.getWidth());
         }
         const auto vtxt = "Versions: " + t3k::Client::versionModeName (client->getVersionMode());
+        {
+            const auto rb = resyncRect();
+            rr (g, rb, 9, hover == hResync ? tint (TXT, 0.08f, HOVER) : HOVER, BORDER, 2);
+            icon (g, iRefresh, rb.getX() + 24, 136, 16, hover == hResync ? TXT : DIM, 2);
+            text (g, "Re-sync", rb.getX() + 42, 137, pop (1, 15), TXT);
+        }
         text (g, vtxt, 1414, 137, pop (1, 14), hover == hVersions ? TXT : DIM, 2, 400);
         juce::Path tri; tri.addTriangle (1422, 134, 1432, 134, 1427, 140);
         g.setColour (hover == hVersions ? TXT : DIM); g.fillPath (tri);
@@ -854,6 +860,13 @@ private:
             text (g, "Loading more...", 747, 528, pop (0, 13), DIM, 1, 400);
         if (! proc.library.getRoot().isDirectory())
             text (g, "Choose your capture folder in the Library tab first: tones are synced into it.", 747, 548, pop (0, 12), RED.withAlpha (0.9f), 1, 1200);
+        else if (const auto n = client->getNotice(); n.isNotEmpty())
+        {
+            const auto f = pop (1, 13);
+            const float w = textW (n, f) + 36;
+            rr (g, box (747 - w * 0.5f, 520, 747 + w * 0.5f, 552), 9, tint (GREEN, 0.14f, BG), tint (GREEN, 0.6f), 2);
+            text (g, n, 747, 537, f, GREEN, 1, w);
+        }
     }
 
     void paintCard (juce::Graphics& g, int i, juce::Rectangle<float> r)
@@ -1023,7 +1036,8 @@ private:
         if (in (box (1042, 84, 1100, 98))) return { hSignOut };
         if (in (box (1000, 62, 1032, 94))) return { hAvatar };
         for (int i = 0; i < 5; ++i) if (in (pillRect (i))) return { hPill, i };
-        if (in (box (1290, 120, 1434, 154))) return { hVersions };
+        if (in (resyncRect())) return { hResync };
+        if (in (box (1414 - versionsW() - 4, 120, 1434, 154))) return { hVersions };
         if (p.y >= 162 && p.y <= kGridBottom)
         {
             const auto l = client->getList ((t3k::Tab) ttab);
@@ -1078,6 +1092,7 @@ private:
             case hAvatar: juce::URL ("https://www.tone3000.com").launchInDefaultBrowser(); break;
             case hPill: ttab = h.index; scGrid = 0; ensureLoaded (true); break;
             case hVersions: versionsMenu(); break;
+            case hResync: resyncMenu(); break;
             case hRetry: client->refresh ((t3k::Tab) ttab); break;
             case hCardBtn: cardAction (h.index); break;
             case hCard: if (dbl && h.index < tones.size()) juce::URL (tones[h.index].url).launchInDefaultBrowser(); break;
@@ -1152,6 +1167,45 @@ private:
                     if (f.existsAsFile()) { sp->proc.loadCapture (sp->targetSlot, f); sp->close(); }
                 });
             }
+        });
+    }
+
+    float versionsW() const { return lv::textW ("Versions: " + t3k::Client::versionModeName (client->getVersionMode()), lv::pop (1, 14)); }
+    juce::Rectangle<float> resyncRect() const { const float r = 1414 - versionsW() - 24; return lv::box (r - 130, 118, r, 154); }
+
+    // Re-sync : relire le dossier de captures, importer un dossier de tones deja synchronises, tout mettre a jour
+    void resyncMenu()
+    {
+        juce::PopupMenu mm;
+        MenuStyle::header (mm, MenuStyle::icoLoad, "Re-sync", "Tones synced by Ampire or NAMMAN");
+        mm.addItem (1, "Scan my capture folder");
+        mm.addItem (2, "Add a folder...");
+        mm.addSeparator();
+        mm.addItem (3, "Update all synced tones");
+        juce::Component::SafePointer<LibraryPanel> sp (this);
+        MenuStyle::styled (mm, menuLookFor (this)).showMenuAsync (juce::PopupMenu::Options(), [sp] (int r)
+        {
+            if (sp == nullptr || r <= 0) return;
+            auto& c = *sp->client;
+            if (! sp->proc.library.getRoot().isDirectory()) { if (auto* ed = sp->findParentComponentOfClass<AmpireEditor>()) ed->chooseFolder (true); return; }
+            if (r == 1)
+            {
+                sp->proc.library.rescan();
+                c.rescanAll();
+                sp->ttab = t3k::synced; sp->scGrid = 0;
+            }
+            else if (r == 2)
+            {
+                sp->chooser = std::make_unique<juce::FileChooser> ("Folder with tones already synced (TONE3000 / NAMMAN)", sp->proc.library.getRoot().getParentDirectory());
+                sp->chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories, [sp] (const juce::FileChooser& fc)
+                {
+                    if (sp == nullptr || ! fc.getResult().isDirectory()) return;
+                    sp->client->importFolder (fc.getResult());
+                    sp->ttab = t3k::synced; sp->scGrid = 0; sp->repaint();
+                });
+            }
+            else if (r == 3) c.updateAll();
+            sp->repaint();
         });
     }
 

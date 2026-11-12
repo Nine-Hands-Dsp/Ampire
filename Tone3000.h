@@ -85,6 +85,10 @@ namespace t3k
         bool getAskFolderName() const;
         bool isBusy (const juce::File& f) const;        // un telechargement en cours touche ce dossier / fichier
         void refreshLocal();
+        void rescanAll();                                 // relit les metadata.json et revérifie les mises a jour
+        void importFolder (const juce::File& src);        // tones deja synchronises ailleurs (NAMMAN...) ranges dans le dossier de captures
+        void updateAll();                                 // telecharge les mises a jour de tous les tones synchronises
+        juce::String getNotice() const;                   // message de resultat (quelques secondes)
         void setAskFolderName (bool b);
         Tone takeSelectedTone();             // tone choisi par Browse TONE3000 (une seule fois)
         Job getJob (const juce::String& toneId) const;
@@ -124,6 +128,9 @@ namespace t3k
         juce::int64 expiresAt = 0;
         int versionMode = vBest;
         bool askFolderName = true;
+        juce::String notice;
+        juce::uint32 noticeUntil = 0;
+        void setNotice (const juce::String& s);
         Tone selectedTone;
         juce::File root;
         ListState lists[numTabs];

@@ -6,6 +6,7 @@
 #include "../PluginProcessor.h"
 #include "../PluginEditor.h"
 #include "../ColourPicker.h"
+#include "../Tone3000.h"
 
 static void setP (AmpireProcessor& p, const char* id, float v)
 {
@@ -61,6 +62,28 @@ int main (int argc, char** argv)
             std::printf ("slot %d: loaded=%d err=%s fmt=%s\n", s, (int) si.loaded, si.error.toRawUTF8(), si.meta.formatLine().toRawUTF8());
         }
         ed.reset();
+        return 0;
+    }
+
+    if (mode == "import")       // AmpireTool import <dossier de captures> <dossier a importer>
+    {
+        t3k::Client c;
+        c.setRoot (juce::File (arg (2)));
+        for (int i = 0; i < 10; ++i) juce::MessageManager::getInstance()->runDispatchLoopUntil (50);
+        c.importFolder (juce::File (arg (3)));
+        for (int i = 0; i < 40; ++i) juce::MessageManager::getInstance()->runDispatchLoopUntil (50);
+        std::printf ("%s\nsynced: %d\n", c.getNotice().toRawUTF8(), c.getList (t3k::synced).total);
+        return 0;
+    }
+
+    if (mode == "scan")         // AmpireTool scan <dossier> : tones synchronises trouves (metadata.json)
+    {
+        t3k::Client c;
+        c.setRoot (juce::File (arg (2)));
+        for (int i = 0; i < 40; ++i) juce::MessageManager::getInstance()->runDispatchLoopUntil (50);
+        const auto l = c.getList (t3k::synced);
+        std::printf ("synced: %d\n", l.total);
+        for (auto& x : l.tones) std::printf ("  %s  %s\n", x.id.toRawUTF8(), x.title.toRawUTF8());
         return 0;
     }
 
